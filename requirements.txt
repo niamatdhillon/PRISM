@@ -1,0 +1,6 @@
+# Hosted / minimal runtime (used by Vercel). No torch, no sentence-transformers, no Ollama.
+fastapi>=0.110
+pydantic>=2.5
+numpy>=1.26,<2
+scikit-learn>=1.4,<1.7
+scipy>=1.11

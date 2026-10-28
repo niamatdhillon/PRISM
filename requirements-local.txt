@@ -1,0 +1,7 @@
+# Full local install: hosted runtime + neural embeddings + dev tools.
+-r requirements.txt
+uvicorn[standard]
+requests
+sentence-transformers>=3
+pytest
+httpx
