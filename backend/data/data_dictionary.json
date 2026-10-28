@@ -1,0 +1,38 @@
+{
+  "tables": {
+    "session": [
+      {"field": "session_id", "type": "string", "description": "Random identifier of one experimental session."},
+      {"field": "participant_id", "type": "string", "description": "Pseudonymous random ID generated in the participant's browser (no name, email or IP stored). Synthetic participants are prefixed SYN-."},
+      {"field": "source", "type": "enum", "values": "participant | synthetic", "description": "Provenance. 'synthetic' rows are generated demonstration data and must never be reported as human results. No public behavioural dataset is bundled."},
+      {"field": "consent / consent_version", "type": "bool / string", "description": "Participant observations are rejected unless consent=true. Version identifies the consent text shown."},
+      {"field": "created_at / completed_at", "type": "ISO-8601 UTC", "description": "Session start and completion timestamps."},
+      {"field": "completed", "type": "bool", "description": "True only if all blocks and the post-task questionnaire were finished."},
+      {"field": "device", "type": "enum", "values": "desktop | tablet | phone | unknown", "description": "Coarse category from viewport width + touch support. No user-agent string is stored."},
+      {"field": "condition.complexity", "type": "int 0-2", "description": "Visual clutter: number of items on screen (0=6, 1=18, 2=36)."},
+      {"field": "condition.movement", "type": "bool", "description": "Whether the items drift."},
+      {"field": "condition.distraction", "type": "bool", "description": "Irrelevant full-field luminance flicker during trials."},
+      {"field": "condition.audio_enabled", "type": "bool", "description": "Whether the participant allowed sound; if true, one block is visual-only and one audiovisual (order randomised)."},
+      {"field": "condition.block_modalities", "type": "list", "description": "Modality of block 0 and block 1."},
+      {"field": "ratings.pre_stress / post_stress", "type": "int 0-100", "description": "Single-item visual-analogue self-rating 'How stressed do you feel right now?' before/after the tasks (0 = not at all, 100 = extremely). Self-report, not a clinical measure."},
+      {"field": "ratings.tlx_mental ... tlx_frustration", "type": "int 0-100", "description": "Six NASA-TLX items: mental, physical, temporal demand, performance (0 = perfect, 100 = failure), effort, frustration. Analysed as raw (unweighted) TLX = mean of six."},
+      {"field": "reflection", "type": "string | null", "description": "Optional free text (<= 4000 chars) written by the participant. Participants are told not to include personal identifiers."}
+    ],
+    "trial": [
+      {"field": "idx / block", "type": "int", "description": "Trial order within session; block 0 and 1 = target-localisation blocks, block 2 = arithmetic task."},
+      {"field": "kind", "type": "enum", "values": "target | arithmetic", "description": "Task type."},
+      {"field": "modality", "type": "enum", "values": "visual | audiovisual | none", "description": "Cue modality in the block. audiovisual adds a short tone at target onset."},
+      {"field": "set_size", "type": "int", "description": "Number of items on screen (6/18/36) for target trials."},
+      {"field": "target_side / response", "type": "string", "description": "Side where the diamond appeared and the participant's response (left/right; true/false for arithmetic)."},
+      {"field": "correct", "type": "bool | null", "description": "Whether the response was correct; null for timeouts."},
+      {"field": "rt_ms", "type": "float | null", "description": "Response time from the first animation frame showing the stimulus (performance.now), ms. null on timeout."},
+      {"field": "timeout / anticipatory", "type": "bool", "description": "No response within 2.5 s (target) / RT < 150 ms (flagged, excluded from RT summaries)."}
+    ],
+    "derived_session_metrics": [
+      {"field": "mean_rt_ms, median_rt_ms, rt_sd_ms, rt_cv", "type": "float", "description": "Computed from correct, non-anticipatory target trials only. rt_cv = SD/mean (intra-individual variability)."},
+      {"field": "accuracy / error_rate", "type": "float", "description": "accuracy = correct / all target trials (timeouts count as incorrect); error_rate = wrong / answered trials."},
+      {"field": "arithmetic_accuracy", "type": "float", "description": "Proportion correct on the 6 arithmetic items."},
+      {"field": "tlx_global", "type": "float", "description": "Raw NASA-TLX 0-100 (null if any item missing)."},
+      {"field": "stress_delta", "type": "int", "description": "post_stress - pre_stress."}
+    ]
+  }
+}
