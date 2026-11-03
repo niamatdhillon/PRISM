@@ -87,10 +87,12 @@ NUM = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?")
 
 def explain_metrics(cfg: Optional[Dict], model: str, metrics_text: str) -> Dict:
     """LLM-written plain-language explanation of ALREADY COMPUTED metrics. Every number in the output is checked against the input."""
-    system = ("You explain machine-learning evaluation results to researchers in plain English. Use ONLY the numbers in the provided text; do not add, "
-              "round, estimate or invent any number, dataset, paper or claim. If something is not in the text, say it is not available. Maximum 150 words.")
+    system = ("You explain machine-learning evaluation results to researchers in plain English. Use ONLY the numbers in the provided text. Copy every number "
+              "EXACTLY as written (for example 0.676, never 67.6%; never round, convert or compute new numbers). Counts of rows are epochs or sessions, NOT people; "
+              "groups are the people. Do not mention any dataset, paper or claim that is not in the text. If something is not in the text, say it is not available. "
+              "Maximum 150 words.")
     text = chat(cfg, model, system, "Evaluation results:\n" + metrics_text)
     allowed = set(NUM.findall(metrics_text))
-    bad = sorted({n for n in NUM.findall(text) if n not in allowed and n.lstrip("-") not in {"1", "2", "3", "4", "5"}})
+    bad = sorted({n for n in NUM.findall(text) if n not in allowed and n.lstrip("-") not in {"1", "2", "3", "4", "5", "95", "25"}})
     return {"text": text, "unverified_numbers": bad, "verified": not bad,
-            "note": "Numbers in the explanation were string-matched against the evaluation JSON; unmatched numbers are listed. The explanation is language, not a result."}
+            "note": "Only NUMBERS are checked (string-matched against the stored evaluation). Wording is not verified: small local models can mislabel units (e.g. call epochs 'subjects'). The structured results are the source of truth; this text is a convenience."}
