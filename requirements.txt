@@ -1,6 +1,16 @@
-# Hosted / minimal runtime (used by Vercel). No torch, no sentence-transformers, no Ollama.
+# Backend runtime (hosted: Docker/Render/Fly etc.). Neural embeddings are optional: see requirements-local.txt.
 fastapi>=0.110
+uvicorn[standard]
 pydantic>=2.5
+sqlalchemy>=2.0,<2.1
+alembic>=1.13
+psycopg2-binary>=2.9
+argon2-cffi>=23.1
 numpy>=1.26,<2
 scikit-learn>=1.4,<1.7
 scipy>=1.11
+requests>=2.31
+faiss-cpu>=1.8
+simplemma>=1.0
+vaderSentiment>=3.3
+pyedflib>=0.1.36

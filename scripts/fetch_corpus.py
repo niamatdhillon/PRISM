@@ -13,14 +13,17 @@ PMIDS = {
     "lavie2005": "15668100", "stein2008": "18354398", "spence2011": "21264748",
     "ernst2002": "11807554", "alais2004": "14761661", "shams2008": "18805039",
     "szalma2011": "21707130", "diederich2004": "15813202", "heitz2014": "24966810",
-    "hultsch2002": "11867658", "chancellor2020": "32219184", "haynes2017": "28462758", "mokhtarinia2026": "42472874",
+    "hultsch2002": "11867658", "chancellor2020": "32219184", "haynes2017": "28462758", "mokhtarinia2026": "42472874", "kiesel2010": "20804238", "stanislaw1999": "10495845", "kapoor2023": "37720327", "saeb2017": "28327985",
+    "anwylirvine2021": "33140376", "bridges2020": "33005482", "dey2018": "33500923", "alsanousi2026": "42590624",
 }
-ARXIV = {"lewis2020": "2005.11401", "reimers2019": "1908.10084", "karpukhin2020": "2004.04906"}
+ARXIV = {"lewis2020": "2005.11401", "reimers2019": "1908.10084", "karpukhin2020": "2004.04906", "gao2023": "2312.10997", "ji2022": "2202.03629"}
 TOPIC = {
     "lavie2005": "attention", "stein2008": "multisensory", "spence2011": "multisensory",
     "ernst2002": "multisensory", "alais2004": "multisensory", "shams2008": "multisensory",
     "szalma2011": "stress", "diederich2004": "multisensory", "heitz2014": "behavioural-measurement",
     "hultsch2002": "cognitive-health", "haynes2017": "cognitive-health", "mokhtarinia2026": "workload", "chancellor2020": "nlp-mental-health",
+    "kiesel2010": "cognitive-flexibility", "stanislaw1999": "behavioural-measurement", "kapoor2023": "ml-validity", "saeb2017": "ml-validity",
+    "anwylirvine2021": "online-timing", "bridges2020": "online-timing", "dey2018": "ar-hci", "alsanousi2026": "workload", "gao2023": "rag", "ji2022": "rag",
     "lewis2020": "rag", "reimers2019": "nlp-methods", "karpukhin2020": "nlp-methods",
 }
 

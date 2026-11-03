@@ -5,6 +5,7 @@ import re
 import threading
 from typing import Dict, List, Optional
 
+import hashlib
 import numpy as np
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -14,8 +15,8 @@ from . import config, llm
 from .nlp import content_stems, split_sentences, STOPWORDS
 
 CHUNK_SENTENCES, CHUNK_STRIDE = 3, 2
-INSUFFICIENT_COVERAGE = 0.4    # min fraction of query content stems found in ONE retrieved passage
-INSUFFICIENT_DENSE = 0.25      # min best semantic cosine
+INSUFFICIENT_COVERAGE = 0.35   # min fraction of query content stems found in ONE retrieved passage
+INSUFFICIENT_DENSE = {True: 0.33, False: 0.25}  # min best semantic cosine (neural embeddings / LSA)
 NEURAL_RESCUE = 0.50           # neural-embedding cosine that can accept a paraphrased question with weak lexical overlap
 SUPPORT_THRESHOLD = 0.5        # min fraction of an answer sentence's content stems found in cited passages
 QUESTION_WORDS = set("what how why does do can could would should which who whether affect effect relate relationship".split())
@@ -99,8 +100,30 @@ def _build() -> Dict:
         note = "Lightweight mode: LSA used instead of neural embeddings."
     if emb is None:
         emb = LSAEmbedder(texts)
-    return {"docs": docs, "chunks": chunks, "texts": texts, "tfidf": tfidf, "X": X,
-            "emb": emb, "E": emb.encode(texts), "note": note}
+    E = np.ascontiguousarray(emb.encode(texts), dtype="float32")
+    index, store = _vector_index(E, emb.name, texts)
+    return {"docs": docs, "chunks": chunks, "texts": texts, "tfidf": tfidf, "X": X, "emb": emb, "E": E, "index": index, "vector_store": store, "note": note}
+
+
+def _vector_index(E: np.ndarray, emb_name: str, texts: List[str]):
+    """Exact inner-product FAISS index over L2-normalised vectors (== cosine). Persisted to var/rag_index and rebuilt when the corpus/embedder changes."""
+    try:
+        import faiss
+    except Exception:  # noqa: BLE001
+        return None, "numpy (faiss not installed)"
+    key = hashlib.sha256((emb_name + "".join(texts)).encode()).hexdigest()[:16]
+    d = config.VAR_DIR / "rag_index"; d.mkdir(parents=True, exist_ok=True)
+    f, k = d / "faiss.index", d / "key.txt"
+    if f.exists() and k.exists() and k.read_text() == key:
+        try:
+            idx = faiss.read_index(str(f))
+            if idx.ntotal == len(texts):
+                return idx, f"faiss IndexFlatIP (loaded from disk, key {key})"
+        except Exception:  # noqa: BLE001
+            pass
+    idx = faiss.IndexFlatIP(E.shape[1]); idx.add(E)
+    faiss.write_index(idx, str(f)); k.write_text(key)
+    return idx, f"faiss IndexFlatIP (built, key {key})"
 
 
 def state() -> Dict:
@@ -114,7 +137,7 @@ def info() -> Dict:
     s = state()
     return {"documents": len(s["docs"]), "chunks": len(s["chunks"]), "chunking": f"{CHUNK_SENTENCES}-sentence windows, stride {CHUNK_STRIDE}",
             "lexical_method": "TF-IDF (sublinear tf, light-stem analyser) + cosine",
-            "semantic_method": s["emb"].name, "semantic_neural": s["emb"].neural,
+            "semantic_method": s["emb"].name, "semantic_neural": s["emb"].neural, "vector_store": s["vector_store"],
             "semantic_description": s["emb"].description, "note": s["note"]}
 
 
@@ -132,8 +155,14 @@ def lexical_scores(query: str) -> np.ndarray:
 
 
 def semantic_scores(query: str) -> np.ndarray:
+    """Cosine similarity of the query to every passage, retrieved through the FAISS index when available."""
     s = state()
-    return s["E"] @ s["emb"].encode([query])[0]
+    q = np.ascontiguousarray(s["emb"].encode([query]), dtype="float32")
+    if s["index"] is None:
+        return s["E"] @ q[0]
+    sims, ids = s["index"].search(q, s["index"].ntotal)
+    out = np.zeros(s["index"].ntotal, dtype="float32"); out[ids[0]] = sims[0]
+    return out
 
 
 def search(query: str, k: int = 5) -> Dict:
@@ -199,8 +228,8 @@ def assess_evidence(query: str, hits: List[Dict], dense_best: float, neural: boo
     reasons = []
     if not (lexical_ok or rescue):
         reasons.append(f"no single retrieved passage covers enough of the question's content terms (best {best_cov:.0%} with {best_n} matching term(s); needs >= {INSUFFICIENT_COVERAGE:.0%} and >= 2 terms)")
-    if dense_best < INSUFFICIENT_DENSE:
-        reasons.append(f"best semantic similarity {dense_best:.2f} is below {INSUFFICIENT_DENSE}")
+    if dense_best < INSUFFICIENT_DENSE[bool(neural)]:
+        reasons.append(f"best semantic similarity {dense_best:.2f} is below {INSUFFICIENT_DENSE[bool(neural)]}")
     return {"sufficient": not reasons, "best_passage_term_coverage": round(best_cov, 3), "best_semantic_score": round(dense_best, 3), "reasons": reasons}
 
 
@@ -224,6 +253,19 @@ def extractive_answer(query: str, hits: List[Dict], n_sent: int = 3) -> List[Dic
     return sorted(pick, key=lambda x: x["cite"])
 
 
+def unsupported_references(answer: str, hits: List[Dict]) -> List[str]:
+    """Flags author-year citations, 'et al.' mentions and DOIs in the answer that do not match any retrieved source (guards against invented papers)."""
+    surnames = {re.split(r"[ ,]", a.strip())[0].lower() for h in hits for a in h["authors"].replace(" and ", ",").split(",") if a.strip()}
+    years = {str(h["year"]) for h in hits}
+    dois = {h["doi"].lower() for h in hits if h.get("doi")}
+    bad = []
+    for m in re.finditer(r"\b([A-Z][A-Za-z\-]+)(?: et al\.?| and [A-Z][a-z]+)?,? \(?((?:19|20)\d\d)\)?", answer):
+        if m.group(1).lower() not in surnames or m.group(2) not in years:
+            bad.append(m.group(0))
+    bad += [d for d in re.findall(r"10\.\d{4,9}/[^\s\]\)]+", answer) if d.lower().rstrip(".,;") not in dois]
+    return sorted(set(bad))
+
+
 def verify_answer(answer: str, hits: List[Dict]) -> Dict:
     by_rank = {h["rank"]: h for h in hits}
     out, bad_cites = [], []
@@ -239,12 +281,13 @@ def verify_answer(answer: str, hits: List[Dict]) -> Dict:
         support = len(stems_ & pool) / len(stems_) if stems_ and pool else 0.0
         out.append({"sentence": sent, "citations": cites, "invalid_citations": invalid, "support": round(support, 2),
                     "supported": bool(cites) and not invalid and support >= SUPPORT_THRESHOLD})
-    return {"sentences": out, "all_supported": bool(out) and all(o["supported"] for o in out),
+    ghost = unsupported_references(answer, hits)
+    return {"sentences": out, "unsupported_references": ghost, "all_supported": bool(out) and all(o["supported"] for o in out) and not ghost,
             "method": f"Citation-existence check + lexical support: >= {SUPPORT_THRESHOLD:.0%} of a sentence's content stems must appear in the passages it cites. "
                       "This catches uncited/invalid/unsupported text; it cannot prove logical entailment."}
 
 
-def ask(question: str, k: int = 4, use_llm: bool = True) -> Dict:
+def ask(question: str, k: int = 4, use_llm: bool = True, llm_cfg: Optional[Dict] = None) -> Dict:
     s = state()
     sem = semantic_scores(question)
     lex = lexical_scores(question)
@@ -261,19 +304,46 @@ def ask(question: str, k: int = 4, use_llm: bool = True) -> Dict:
     if not ev["sufficient"]:
         return {**base, "mode": "insufficient_evidence", "answer": "The curated corpus does not contain enough evidence to answer this question reliably.",
                 "generator": None, "verification": None}
-    st = llm.status() if use_llm else {"available": False, "reason": "LLM disabled for this request", "model": None}
+    st = llm.status(llm_cfg) if use_llm else {"available": False, "state": "disabled", "reason": "LLM disabled for this request", "model": None}
     if st["available"]:
         ctx = "\n\n".join(f"[{h['rank']}] ({h['authors']} {h['year']}, {h['title']}) {h['text']}" for h in hits)
         system = ("You answer research questions strictly from the numbered passages provided. Cite passages like [1] after each claim. "
                   "Do not use outside knowledge. If the passages do not answer the question reply exactly: INSUFFICIENT_EVIDENCE. Maximum 120 words.")
         try:
-            text = llm.chat(st["model"], system, f"Passages:\n{ctx}\n\nQuestion: {question}")
+            text = llm.chat(llm_cfg, st["model"], system, f"Passages:\n{ctx}\n\nQuestion: {question}")
             if "INSUFFICIENT_EVIDENCE" in text:
                 return {**base, "mode": "insufficient_evidence", "answer": "The model judged the retrieved passages insufficient to answer.", "generator": {"type": "ollama", "model": st["model"]}, "verification": None}
             return {**base, "mode": "generated", "answer": text, "generator": {"type": "ollama", "model": st["model"]}, "verification": verify_answer(text, hits)}
-        except Exception as e:  # noqa: BLE001
-            st = {"available": False, "reason": f"Ollama call failed: {type(e).__name__}: {str(e)[:120]}"}
+        except llm.LlmError as e:
+            st = {"available": False, "state": e.kind, "reason": f"Ollama call failed ({e.kind}): {e.message}"}
     picks = extractive_answer(question, hits)
     text = " ".join(f"{p['sentence'].rstrip('.')} [{p['cite']}]." for p in picks)
     return {**base, "mode": "extractive", "answer": text, "extracted": picks,
             "generator": {"type": "extractive-fallback", "model": None, "reason": st["reason"]}, "verification": verify_answer(text, hits)}
+
+
+def _hybrid_hits(question: str, k: int):
+    s = state()
+    sem, lex = semantic_scores(question), lexical_scores(question)
+    rr = np.zeros(len(sem))
+    for scores in (sem, lex):
+        for r, i in enumerate(np.argsort(-scores)):
+            rr[i] += 1.0 / (60 + r)
+    order = np.argsort(-rr)[:k]
+    return [{"rank": r + 1, "score_semantic": round(float(sem[i]), 4), "score_tfidf": round(float(lex[i]), 4), **s["chunks"][i]} for r, i in enumerate(order)], float(sem.max())
+
+
+def evaluate_gate() -> Dict:
+    """How well does the insufficient-evidence gate separate answerable questions (the judged qrels queries) from off-topic probes?
+    NOTE: thresholds were set after inspecting these same questions, so the figures are optimistic."""
+    qrels = json.loads((config.DATA_DIR / "qrels.json").read_text(encoding="utf-8"))
+    neural = state()["emb"].neural
+    def run(qs):
+        out = []
+        for t in qs:
+            hits, dense = _hybrid_hits(t, 4); ev = assess_evidence(t, hits, dense, neural); out.append({"question": t, "sufficient": ev["sufficient"], "coverage": ev["best_passage_term_coverage"], "dense": ev["best_semantic_score"]})
+        return out
+    ans, off = run([x["query"] for x in qrels["queries"]]), run(qrels["unanswerable_probe_questions"])
+    return {"answerable_total": len(ans), "answerable_accepted": sum(a["sufficient"] for a in ans), "offtopic_total": len(off), "offtopic_rejected": sum(not o["sufficient"] for o in off),
+            "false_rejects": [a["question"] for a in ans if not a["sufficient"]], "false_accepts": [o["question"] for o in off if o["sufficient"]], "semantic_method": state()["emb"].name,
+            "caveat": "Thresholds were tuned after looking at these same questions: optimistic, not a held-out estimate."}

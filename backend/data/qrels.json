@@ -1,26 +1,208 @@
 {
-  "annotation": "Single annotator (the AI assistant that built PRISM), document-level judgements made by reading each title+abstract. Queries were written after reading the abstracts, so scores are optimistic. 16 queries, not expert-validated: treat as a smoke test of retrieval behaviour, not a benchmark.",
-  "queries": [
-    {"id": "q01", "query": "Do redundant audio and visual signals speed up detection?", "relevant_docs": ["diederich2004", "stein2008", "alais2004"]},
-    {"id": "q02", "query": "How does distraction interact with task load and attention?", "relevant_docs": ["lavie2005"]},
-    {"id": "q03", "query": "Which questionnaire measures perceived mental workload and is it reliable?", "relevant_docs": ["mokhtarinia2026"]},
-    {"id": "q04", "query": "Does background noise impair performance?", "relevant_docs": ["szalma2011"]},
-    {"id": "q05", "query": "How is trial-to-trial variability in reaction time related to ageing?", "relevant_docs": ["hultsch2002", "haynes2017"]},
-    {"id": "q06", "query": "Can reaction time variability predict later cognitive decline?", "relevant_docs": ["haynes2017", "hultsch2002"]},
-    {"id": "q07", "query": "Why do faster responses tend to be less accurate?", "relevant_docs": ["heitz2014"]},
-    {"id": "q08", "query": "Can language on social media diagnose depression?", "relevant_docs": ["chancellor2020"]},
-    {"id": "q09", "query": "How do retrieval-augmented language models use external documents?", "relevant_docs": ["lewis2020", "karpukhin2020"]},
-    {"id": "q10", "query": "Dense versus sparse passage retrieval compared with BM25", "relevant_docs": ["karpukhin2020"]},
-    {"id": "q11", "query": "How can sentence similarity be computed efficiently with embeddings?", "relevant_docs": ["reimers2019"]},
-    {"id": "q12", "query": "How does the brain statistically combine information from different senses?", "relevant_docs": ["ernst2002", "alais2004", "stein2008"]},
-    {"id": "q13", "query": "Does learning with several senses at once work better?", "relevant_docs": ["shams2008"]},
-    {"id": "q14", "query": "Do people associate high-pitched sounds with small bright objects?", "relevant_docs": ["spence2011"]},
-    {"id": "q15", "query": "Which sense dominates when the visual signal is blurry?", "relevant_docs": ["alais2004"]},
-    {"id": "q16", "query": "Irrelevant items capture attention unless the main task is demanding", "relevant_docs": ["lavie2005"]}
-  ],
-  "unanswerable_probe_questions": [
-    "What is the capital of France?",
-    "How do I bake sourdough bread?",
-    "Who won the 2018 football World Cup?"
-  ]
+ "annotation": "Single annotator (the AI assistant that built PRISM), document-level judgements made by reading each title+abstract. Queries were written after reading the abstracts, so scores are optimistic. 25 queries, not expert-validated: treat as a smoke test of retrieval behaviour, not a benchmark.",
+ "queries": [
+  {
+   "id": "q01",
+   "query": "Do redundant audio and visual signals speed up detection?",
+   "relevant_docs": [
+    "diederich2004",
+    "stein2008",
+    "alais2004"
+   ]
+  },
+  {
+   "id": "q02",
+   "query": "How does distraction interact with task load and attention?",
+   "relevant_docs": [
+    "lavie2005"
+   ]
+  },
+  {
+   "id": "q03",
+   "query": "Which questionnaire measures perceived mental workload and is it reliable?",
+   "relevant_docs": [
+    "mokhtarinia2026"
+   ]
+  },
+  {
+   "id": "q04",
+   "query": "Does background noise impair performance?",
+   "relevant_docs": [
+    "szalma2011"
+   ]
+  },
+  {
+   "id": "q05",
+   "query": "How is trial-to-trial variability in reaction time related to ageing?",
+   "relevant_docs": [
+    "hultsch2002",
+    "haynes2017"
+   ]
+  },
+  {
+   "id": "q06",
+   "query": "Can reaction time variability predict later cognitive decline?",
+   "relevant_docs": [
+    "haynes2017",
+    "hultsch2002"
+   ]
+  },
+  {
+   "id": "q07",
+   "query": "Why do faster responses tend to be less accurate?",
+   "relevant_docs": [
+    "heitz2014"
+   ]
+  },
+  {
+   "id": "q08",
+   "query": "Can language on social media diagnose depression?",
+   "relevant_docs": [
+    "chancellor2020"
+   ]
+  },
+  {
+   "id": "q09",
+   "query": "How do retrieval-augmented language models use external documents?",
+   "relevant_docs": [
+    "lewis2020",
+    "karpukhin2020",
+    "gao2023"
+   ]
+  },
+  {
+   "id": "q10",
+   "query": "Dense versus sparse passage retrieval compared with BM25",
+   "relevant_docs": [
+    "karpukhin2020"
+   ]
+  },
+  {
+   "id": "q11",
+   "query": "How can sentence similarity be computed efficiently with embeddings?",
+   "relevant_docs": [
+    "reimers2019"
+   ]
+  },
+  {
+   "id": "q12",
+   "query": "How does the brain statistically combine information from different senses?",
+   "relevant_docs": [
+    "ernst2002",
+    "alais2004",
+    "stein2008"
+   ]
+  },
+  {
+   "id": "q13",
+   "query": "Does learning with several senses at once work better?",
+   "relevant_docs": [
+    "shams2008"
+   ]
+  },
+  {
+   "id": "q14",
+   "query": "Do people associate high-pitched sounds with small bright objects?",
+   "relevant_docs": [
+    "spence2011"
+   ]
+  },
+  {
+   "id": "q15",
+   "query": "Which sense dominates when the visual signal is blurry?",
+   "relevant_docs": [
+    "alais2004"
+   ]
+  },
+  {
+   "id": "q16",
+   "query": "Irrelevant items capture attention unless the main task is demanding",
+   "relevant_docs": [
+    "lavie2005"
+   ]
+  },
+  {
+   "id": "q17",
+   "query": "How much timing error do web browsers add to reaction time measurements?",
+   "relevant_docs": [
+    "anwylirvine2021",
+    "bridges2020"
+   ]
+  },
+  {
+   "id": "q18",
+   "query": "What is the cost of switching between tasks?",
+   "relevant_docs": [
+    "kiesel2010"
+   ]
+  },
+  {
+   "id": "q19",
+   "query": "How is sensitivity separated from response bias in detection tasks?",
+   "relevant_docs": [
+    "stanislaw1999"
+   ]
+  },
+  {
+   "id": "q20",
+   "query": "Why does random cross-validation inflate accuracy when one person contributes many rows?",
+   "relevant_docs": [
+    "saeb2017",
+    "kapoor2023"
+   ]
+  },
+  {
+   "id": "q21",
+   "query": "Data leakage in machine learning research",
+   "relevant_docs": [
+    "kapoor2023",
+    "saeb2017"
+   ]
+  },
+  {
+   "id": "q22",
+   "query": "Which physiological signals can measure cognitive load without invasive sensors?",
+   "relevant_docs": [
+    "alsanousi2026"
+   ]
+  },
+  {
+   "id": "q23",
+   "query": "User studies of augmented reality interfaces",
+   "relevant_docs": [
+    "dey2018"
+   ]
+  },
+  {
+   "id": "q24",
+   "query": "Why do language models make up unsupported text?",
+   "relevant_docs": [
+    "ji2022",
+    "gao2023"
+   ]
+  },
+  {
+   "id": "q25",
+   "query": "How can external knowledge reduce hallucination in language models?",
+   "relevant_docs": [
+    "gao2023",
+    "lewis2020",
+    "ji2022"
+   ]
+  }
+ ],
+ "unanswerable_probe_questions": [
+  "What is the capital of France?",
+  "How do I bake sourdough bread?",
+  "Who won the 2018 football World Cup?",
+  "What is the boiling point of water at altitude?",
+  "How do I change a flat tyre?",
+  "What are the symptoms of influenza?",
+  "Explain the rules of chess.",
+  "What is the best programming language for web servers?",
+  "Who painted the Mona Lisa?",
+  "How many moons does Jupiter have?",
+  "What is the current price of gold?",
+  "How do vaccines work?"
+ ]
 }

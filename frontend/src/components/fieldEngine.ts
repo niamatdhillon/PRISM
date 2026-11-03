@@ -1,6 +1,6 @@
 // Pseudo-3D "spatial" search field rendered on a 2D canvas (depth-scaled, parallax drift, perspective floor grid).
 // Task: find the CYAN DIAMOND among cyan circles and violet diamonds (conjunction search) and report its side.
-export interface FieldConfig { complexity: 0 | 1 | 2; movement: boolean; distraction: boolean; }
+export interface FieldConfig { complexity: 0 | 1 | 2; movement: boolean; distraction: boolean; brightness?: number }
 export const SET_SIZES = [6, 18, 36] as const;
 interface Item { x: number; y: number; z: number; vx: number; vy: number; shape: "circle" | "diamond"; col: string; ph: number; }
 
@@ -46,7 +46,7 @@ export class FieldEngine {
   }
   private shape(it: Item, strong = false) {
     const { px, py, r } = this.proj(it), c = this.ctx;
-    c.fillStyle = it.col; c.strokeStyle = strong ? "#fff" : "rgba(255,255,255,.35)"; c.lineWidth = strong ? 2.5 : 1; c.globalAlpha = strong ? 1 : 0.55 + 0.4 * (1 - it.z);
+    c.fillStyle = it.col; c.strokeStyle = strong ? "#fff" : "rgba(255,255,255,.35)"; c.lineWidth = strong ? 2.5 : 1; c.globalAlpha = (strong ? 1 : 0.55 + 0.4 * (1 - it.z)) * (strong ? Math.max(0.6, this.cfg.brightness ?? 1) : (this.cfg.brightness ?? 1));
     c.beginPath();
     if (it.shape === "circle") c.arc(px, py, r, 0, 6.283); else { c.moveTo(px, py - r * 1.25); c.lineTo(px + r, py); c.lineTo(px, py + r * 1.25); c.lineTo(px - r, py); c.closePath(); }
     c.fill(); c.stroke(); c.globalAlpha = 1;
@@ -91,10 +91,10 @@ export class Tone {
     if (this.ctx.state === "suspended") void this.ctx.resume();
     return true;
   }
-  beep() {
+  beep(freq = 880, dur = 0.09) {
     if (!this.ensure() || !this.ctx || !this.gain) return;
     const o = this.ctx.createOscillator(), g = this.ctx.createGain(), t = this.ctx.currentTime;
-    o.frequency.value = 880; g.gain.setValueAtTime(this.volume, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
-    o.connect(g); g.connect(this.gain); o.start(t); o.stop(t + 0.1);
+    o.frequency.value = freq; g.gain.setValueAtTime(this.volume, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.gain); o.start(t); o.stop(t + dur + 0.01);
   }
 }

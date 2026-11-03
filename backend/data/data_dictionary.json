@@ -1,38 +1,33 @@
-{
-  "tables": {
-    "session": [
-      {"field": "session_id", "type": "string", "description": "Random identifier of one experimental session."},
-      {"field": "participant_id", "type": "string", "description": "Pseudonymous random ID generated in the participant's browser (no name, email or IP stored). Synthetic participants are prefixed SYN-."},
-      {"field": "source", "type": "enum", "values": "participant | synthetic", "description": "Provenance. 'synthetic' rows are generated demonstration data and must never be reported as human results. No public behavioural dataset is bundled."},
-      {"field": "consent / consent_version", "type": "bool / string", "description": "Participant observations are rejected unless consent=true. Version identifies the consent text shown."},
-      {"field": "created_at / completed_at", "type": "ISO-8601 UTC", "description": "Session start and completion timestamps."},
-      {"field": "completed", "type": "bool", "description": "True only if all blocks and the post-task questionnaire were finished."},
-      {"field": "device", "type": "enum", "values": "desktop | tablet | phone | unknown", "description": "Coarse category from viewport width + touch support. No user-agent string is stored."},
-      {"field": "condition.complexity", "type": "int 0-2", "description": "Visual clutter: number of items on screen (0=6, 1=18, 2=36)."},
-      {"field": "condition.movement", "type": "bool", "description": "Whether the items drift."},
-      {"field": "condition.distraction", "type": "bool", "description": "Irrelevant full-field luminance flicker during trials."},
-      {"field": "condition.audio_enabled", "type": "bool", "description": "Whether the participant allowed sound; if true, one block is visual-only and one audiovisual (order randomised)."},
-      {"field": "condition.block_modalities", "type": "list", "description": "Modality of block 0 and block 1."},
-      {"field": "ratings.pre_stress / post_stress", "type": "int 0-100", "description": "Single-item visual-analogue self-rating 'How stressed do you feel right now?' before/after the tasks (0 = not at all, 100 = extremely). Self-report, not a clinical measure."},
-      {"field": "ratings.tlx_mental ... tlx_frustration", "type": "int 0-100", "description": "Six NASA-TLX items: mental, physical, temporal demand, performance (0 = perfect, 100 = failure), effort, frustration. Analysed as raw (unweighted) TLX = mean of six."},
-      {"field": "reflection", "type": "string | null", "description": "Optional free text (<= 4000 chars) written by the participant. Participants are told not to include personal identifiers."}
-    ],
-    "trial": [
-      {"field": "idx / block", "type": "int", "description": "Trial order within session; block 0 and 1 = target-localisation blocks, block 2 = arithmetic task."},
-      {"field": "kind", "type": "enum", "values": "target | arithmetic", "description": "Task type."},
-      {"field": "modality", "type": "enum", "values": "visual | audiovisual | none", "description": "Cue modality in the block. audiovisual adds a short tone at target onset."},
-      {"field": "set_size", "type": "int", "description": "Number of items on screen (6/18/36) for target trials."},
-      {"field": "target_side / response", "type": "string", "description": "Side where the diamond appeared and the participant's response (left/right; true/false for arithmetic)."},
-      {"field": "correct", "type": "bool | null", "description": "Whether the response was correct; null for timeouts."},
-      {"field": "rt_ms", "type": "float | null", "description": "Response time from the first animation frame showing the stimulus (performance.now), ms. null on timeout."},
-      {"field": "timeout / anticipatory", "type": "bool", "description": "No response within 2.5 s (target) / RT < 150 ms (flagged, excluded from RT summaries)."}
-    ],
-    "derived_session_metrics": [
-      {"field": "mean_rt_ms, median_rt_ms, rt_sd_ms, rt_cv", "type": "float", "description": "Computed from correct, non-anticipatory target trials only. rt_cv = SD/mean (intra-individual variability)."},
-      {"field": "accuracy / error_rate", "type": "float", "description": "accuracy = correct / all target trials (timeouts count as incorrect); error_rate = wrong / answered trials."},
-      {"field": "arithmetic_accuracy", "type": "float", "description": "Proportion correct on the 6 arithmetic items."},
-      {"field": "tlx_global", "type": "float", "description": "Raw NASA-TLX 0-100 (null if any item missing)."},
-      {"field": "stress_delta", "type": "int", "description": "post_stress - pre_stress."}
-    ]
-  }
-}
+{"tables": {
+ "participants": [
+  {"field": "code", "type": "string", "description": "Random pseudonymous code (P-XXXXXX) shown to the participant. Not derived from any personal data."},
+  {"field": "token_hash", "type": "sha256", "description": "Hash of the random secret in the participant's cookie / recovery code. The secret itself is never stored."},
+  {"field": "status / withdrawn_at", "type": "active|withdrawn", "description": "Withdrawal deletes all sessions, trials and reflections and invalidates the secret."}],
+ "consents": [
+  {"field": "version, text_sha256, ethics_ref, given_at, withdrawn_at", "type": "record", "description": "Which consent text (hash) was accepted under which ethics reference and when. Retained after withdrawal as a minimal governance record."}],
+ "experiment_sessions": [
+  {"field": "id", "type": "string", "description": "Random session identifier."},
+  {"field": "device", "type": "desktop|tablet|phone|unknown", "description": "Coarse category from viewport size and touch support; no user-agent string is stored."},
+  {"field": "display_mode", "type": "canvas2d|scene3d|camera_overlay|webxr", "description": "Mode actually used for the visual-search task (fallbacks are recorded, never hidden)."},
+  {"field": "camera_used", "type": "bool", "description": "Whether the camera backdrop was active. No image or video is ever captured, stored or uploaded."},
+  {"field": "audio_enabled", "type": "bool", "description": "Whether sound was enabled."},
+  {"field": "condition", "type": "json", "description": "complexity 0-2 (6/18/36 items), movement, distraction (2 Hz low-contrast flicker), brightness 0.2-1.0, block_modalities (visual/audiovisual per block)."},
+  {"field": "ratings", "type": "json 0-100", "description": "pre_stress, post_stress (single-item self-report), perceived_difficulty, six NASA-TLX items (performance: 0 = perfect, 100 = failure). Raw TLX = mean of six."},
+  {"field": "timing", "type": "json", "description": "median_frame_ms (display refresh estimate in 3D modes) and viewport size, for timing-quality screening."},
+  {"field": "reflection", "type": "text|null", "description": "Optional free text (max 4000 chars); participants are asked not to include identifiers. Visible to researchers only."}],
+ "trials": [
+  {"field": "task", "type": "enum", "description": "visual_search, auditory_oddball, task_switching, flanker, pattern, arithmetic."},
+  {"field": "trial_type", "type": "string|null", "description": "oddball: standard|deviant; task switching: first|repeat|switch; flanker: congruent|incongruent; pattern: progression|alternation|cycle."},
+  {"field": "modality", "type": "enum", "description": "visual, audiovisual (tone at target onset; only if actually delivered), auditory, none."},
+  {"field": "set_size, stimulus", "type": "int, string", "description": "visual search: items on screen and target side; other tasks: stimulus descriptor (e.g. 'colour:cyan-circle')."},
+  {"field": "response, correct", "type": "string, bool|null", "description": "Participant response and correctness (null for timeouts). Oddball: response 'press' or null; correct also covers correct rejections."},
+  {"field": "rt_ms", "type": "float|null", "description": "Time from the first painted frame showing the stimulus (performance.now) to the input event timestamp. Includes display and input latency that varies by device."},
+  {"field": "onset_epoch_ms", "type": "float", "description": "Stimulus onset as epoch milliseconds (timeOrigin + performance.now)."},
+  {"field": "timeout / anticipatory", "type": "bool", "description": "No response in the window / RT below 150 ms (100 ms for tones); anticipatory trials are excluded from RT summaries."}],
+ "derived_session_metrics": [
+  {"field": "vs_mean_rt, vs_rt_cv, vs_accuracy", "type": "float", "description": "Visual-search mean RT of correct non-anticipatory trials, coefficient of variation, and accuracy (timeouts count as incorrect)."},
+  {"field": "od_dprime, od_hit_rate, od_fa_rate", "type": "float", "description": "Oddball signal-detection sensitivity d' (log-linear corrected), hit and false-alarm rates."},
+  {"field": "ts_switch_cost_rt/acc", "type": "float", "description": "Task-switching cost: switch minus repeat RT (ms); repeat minus switch accuracy."},
+  {"field": "fl_congruency_rt/acc", "type": "float", "description": "Flanker effect: incongruent minus congruent RT; congruent minus incongruent accuracy."},
+  {"field": "tlx_global, stress_delta", "type": "float", "description": "Raw NASA-TLX (mean of six items) and post minus pre stress."}]
+}}

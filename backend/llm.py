@@ -1,30 +1,96 @@
-"""Optional local LLM through Ollama. Disabled in hosted mode (a hosted server must not call anyone's localhost)."""
+"""Ollama client with explicit status, typed errors and timeouts. Never pretends a model is running; never silently substitutes models."""
+import re
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
+
 from . import config
 
 
-def status() -> Dict:
-    if config.IS_HOSTED:
-        return {"available": False, "reason": "Hosted mode: Ollama is a local-only component and is never contacted.", "models": [], "model": None}
-    try:
-        import requests  # local mode only; kept out of the hosted dependency set
-        r = requests.get(config.OLLAMA_HOST + "/api/tags", timeout=1.5)
-        r.raise_for_status()
-        models = [m["name"] for m in r.json().get("models", [])]
-    except Exception as e:  # noqa: BLE001 - any failure means "not available"
-        return {"available": False, "reason": f"Ollama not reachable at {config.OLLAMA_HOST} ({type(e).__name__}).", "models": [], "model": None}
-    if not models:
-        return {"available": False, "reason": "Ollama is running but has no models installed (run `ollama pull <model>`).", "models": [], "model": None}
-    chosen = config.OLLAMA_MODEL if config.OLLAMA_MODEL in models else (None if config.OLLAMA_MODEL else models[0])
-    if chosen is None:
-        return {"available": False, "reason": f"Configured OLLAMA_MODEL '{config.OLLAMA_MODEL}' is not installed.", "models": models, "model": None}
-    return {"available": True, "reason": "ok", "models": models, "model": chosen}
+class LlmError(Exception):
+    def __init__(self, kind: str, message: str):
+        super().__init__(message)
+        self.kind, self.message = kind, message
 
 
-def chat(model: str, system: str, user: str) -> str:
+LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
+
+def resolve_cfg(stored: Optional[Dict] = None) -> Dict:
+    s = stored or {}
+    return {"host": (s.get("host") or config.OLLAMA_HOST).rstrip("/"), "model": s.get("model") or config.OLLAMA_MODEL, "timeout": float(s.get("timeout") or config.OLLAMA_TIMEOUT_S)}
+
+
+def validate_host(host: str) -> str:
+    u = urlparse(host)
+    if u.scheme not in ("http", "https") or not u.hostname:
+        raise ValueError("Ollama host must be an http(s) URL")
+    if u.hostname not in LOOPBACK and not config.ALLOW_REMOTE_OLLAMA:
+        raise ValueError("only loopback Ollama hosts are accepted (set PRISM_ALLOW_REMOTE_OLLAMA=1 to allow a private remote host; never expose Ollama publicly)")
+    return host.rstrip("/")
+
+
+def status(cfg: Optional[Dict] = None) -> Dict:
     import requests
-    r = requests.post(config.OLLAMA_HOST + "/api/chat", timeout=config.OLLAMA_TIMEOUT_S, json={
-        "model": model, "stream": False, "options": {"temperature": 0.1, "num_predict": 300},
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
-    r.raise_for_status()
-    return r.json()["message"]["content"].strip()
+    c = resolve_cfg(cfg)
+    base = {"host": c["host"], "configured_model": c["model"] or None, "available": False, "models": [], "model": None, "version": None, "running_models": []}
+    try:
+        validate_host(c["host"])
+    except ValueError as e:
+        return {**base, "state": "host_rejected", "reason": str(e)}
+    try:
+        r = requests.get(c["host"] + "/api/tags", timeout=2.0); r.raise_for_status()
+        models = [{"name": m["name"], "size_gb": round(m.get("size", 0) / 1e9, 2), "parameters": m.get("details", {}).get("parameter_size"), "quant": m.get("details", {}).get("quantization_level")} for m in r.json().get("models", [])]
+    except requests.exceptions.ConnectionError:
+        return {**base, "state": "unreachable", "reason": f"Ollama is not running at {c['host']}. Start it (Ollama app or `ollama serve`)."}
+    except Exception as e:  # noqa: BLE001
+        return {**base, "state": "error", "reason": f"{type(e).__name__}: {str(e)[:150]}"}
+    try:
+        base["version"] = requests.get(c["host"] + "/api/version", timeout=2.0).json().get("version")
+        base["running_models"] = [m["name"] for m in requests.get(c["host"] + "/api/ps", timeout=2.0).json().get("models", [])]
+    except Exception:  # noqa: BLE001
+        pass
+    base["models"] = models
+    names = [m["name"] for m in models]
+    if not names:
+        return {**base, "state": "no_models", "reason": "Ollama is running but no model is installed. Run `ollama pull qwen2.5:3b` (about 1.9 GB)."}
+    if c["model"]:
+        if c["model"] not in names:
+            return {**base, "state": "model_missing", "reason": f"Configured model '{c['model']}' is not installed. Installed: {', '.join(names)}."}
+        return {**base, "state": "ready", "available": True, "model": c["model"], "reason": "ok"}
+    return {**base, "state": "ready", "available": True, "model": names[0], "reason": "ok (first installed model; set one explicitly in Ollama settings)"}
+
+
+def chat(cfg: Optional[Dict], model: str, system: str, user: str, max_tokens: int = 350) -> str:
+    import requests
+    c = resolve_cfg(cfg)
+    validate_host(c["host"])
+    try:
+        r = requests.post(c["host"] + "/api/chat", timeout=c["timeout"], json={
+            "model": model, "stream": False, "options": {"temperature": 0.1, "num_predict": max_tokens},
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
+    except requests.exceptions.Timeout:
+        raise LlmError("timeout", f"Ollama did not answer within {c['timeout']:.0f}s (the model may still be loading).")
+    except requests.exceptions.ConnectionError:
+        raise LlmError("unreachable", "Ollama became unreachable.")
+    if r.status_code == 404:
+        raise LlmError("model_missing", f"Model '{model}' not found in Ollama.")
+    if not r.ok:
+        raise LlmError("http_error", f"Ollama returned HTTP {r.status_code}: {r.text[:150]}")
+    try:
+        return r.json()["message"]["content"].strip()
+    except Exception:  # noqa: BLE001
+        raise LlmError("bad_response", "Unexpected response format from Ollama.")
+
+
+NUM = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?")
+
+
+def explain_metrics(cfg: Optional[Dict], model: str, metrics_text: str) -> Dict:
+    """LLM-written plain-language explanation of ALREADY COMPUTED metrics. Every number in the output is checked against the input."""
+    system = ("You explain machine-learning evaluation results to researchers in plain English. Use ONLY the numbers in the provided text; do not add, "
+              "round, estimate or invent any number, dataset, paper or claim. If something is not in the text, say it is not available. Maximum 150 words.")
+    text = chat(cfg, model, system, "Evaluation results:\n" + metrics_text)
+    allowed = set(NUM.findall(metrics_text))
+    bad = sorted({n for n in NUM.findall(text) if n not in allowed and n.lstrip("-") not in {"1", "2", "3", "4", "5"}})
+    return {"text": text, "unverified_numbers": bad, "verified": not bad,
+            "note": "Numbers in the explanation were string-matched against the evaluation JSON; unmatched numbers are listed. The explanation is language, not a result."}

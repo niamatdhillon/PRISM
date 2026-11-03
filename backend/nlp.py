@@ -91,6 +91,10 @@ def preprocess(text: str) -> Dict:
         {"name": "Stop-word handling", "detail": f"{sum(r['stopword'] for r in rows)} of {len(rows)} tokens matched a {len(STOPWORDS)}-word English stop list and are excluded from TF-IDF/retrieval (kept for linguistic features)."},
         {"name": "Light stemming", "detail": "Crude suffix stripping (-ing, -ed, -ion, -ly, plural -s ...) so that related word forms share one TF-IDF dimension. Not Porter; some conflations are imperfect."},
     ]
+    lem = lemmatise([r["text"] for r in rows])
+    for r, l in zip(rows, lem):
+        r["lemma"] = l
+    steps.append({"name": "Lemmatisation", "detail": "Dictionary lemmas (simplemma) are shown per token for interpretation; TF-IDF uses the light stems above."})
     return {"raw": raw, "normalised": norm, "tokens": rows, "content_stems": kept, "steps": steps}
 
 
@@ -138,3 +142,66 @@ def themes_and_polarity(text: str) -> Dict:
         "limitations": ("Lexicon counts over a ~100-word hand-written list with 2-token negation handling. Not validated, "
                         "blind to sarcasm and context, and NOT a measure of stress, mood, or any health condition."),
     }
+
+
+# ---------------------------------------------------------------- v2 additions: lemmas, VADER, keywords, themes
+def lemmatise(tokens: List[str]) -> List[str]:
+    """Dictionary-based lemmatisation (simplemma, English). Falls back to the token itself if the library is missing."""
+    try:
+        import simplemma
+        return [simplemma.lemmatize(t, lang="en") for t in tokens]
+    except Exception:  # noqa: BLE001
+        return list(tokens)
+
+
+def vader_sentiment(text: str) -> Dict:
+    """VADER (Hutto & Gilbert 2014) lexicon sentiment on the RAW text. Describes the wording only; NOT a measure of stress or mood."""
+    try:
+        from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+        s = SentimentIntensityAnalyzer().polarity_scores(text or "")
+        label = "positive wording" if s["compound"] >= 0.05 else "negative wording" if s["compound"] <= -0.05 else "neutral wording"
+        return {"available": True, "compound": s["compound"], "pos": s["pos"], "neu": s["neu"], "neg": s["neg"], "label": label,
+                "caveat": "Lexicon-based and tuned on social-media text; blind to sarcasm/context. Describes word choice only - not stress, mood or any health condition."}
+    except Exception as e:  # noqa: BLE001
+        return {"available": False, "reason": f"vaderSentiment not installed ({type(e).__name__})"}
+
+
+def extract_keywords(text: str, k: int = 8) -> List[Dict]:
+    """RAKE-style keyphrases: candidate phrases are maximal runs of non-stop-words; scored by sum of word degree/frequency."""
+    toks = TOKEN_RE.findall(normalise(text))
+    phrases, cur = [], []
+    for t in toks:
+        if t in STOPWORDS or len(t) < 2:
+            if cur:
+                phrases.append(cur); cur = []
+        else:
+            cur.append(t)
+    if cur:
+        phrases.append(cur)
+    freq, deg = {}, {}
+    for ph in phrases:
+        for w in ph:
+            freq[w] = freq.get(w, 0) + 1; deg[w] = deg.get(w, 0) + len(ph) - 1
+    scored = {}
+    for ph in phrases:
+        scored[" ".join(ph)] = sum((deg[w] + freq[w]) / freq[w] for w in ph)
+    return [{"phrase": p, "score": round(s, 2)} for p, s in sorted(scored.items(), key=lambda kv: (-kv[1], kv[0]))[:k]]
+
+
+def corpus_themes(texts: List[str], n_topics: int = 3, n_terms: int = 6, min_docs: int = 10) -> Dict:
+    """NMF topic model over REAL reflections. Refuses to run on fewer than `min_docs` documents (topics from tiny samples are noise)."""
+    docs = [t for t in texts if t and len(tokenise(t)) >= 5]
+    if len(docs) < min_docs:
+        return {"status": "insufficient_data", "n_documents": len(docs), "needed": min_docs,
+                "message": f"Theme modelling needs >= {min_docs} reflections of >= 5 words; only {len(docs)} available. No topics are shown."}
+    from sklearn.decomposition import NMF
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    vec = TfidfVectorizer(analyzer=content_stems, min_df=2, sublinear_tf=True)
+    X = vec.fit_transform(docs)
+    if X.shape[1] < n_topics + 1:
+        return {"status": "insufficient_data", "n_documents": len(docs), "message": "Too little shared vocabulary across reflections for topic modelling."}
+    k = min(n_topics, X.shape[0] - 1)
+    nmf = NMF(n_components=k, random_state=0, init="nndsvda", max_iter=500).fit(X)
+    terms = vec.get_feature_names_out()
+    return {"status": "ok", "n_documents": len(docs), "topics": [{"topic": i + 1, "top_terms": [terms[j] for j in comp.argsort()[::-1][:n_terms]]} for i, comp in enumerate(nmf.components_)],
+            "note": "Unsupervised and exploratory; topic labels are for a human to interpret."}

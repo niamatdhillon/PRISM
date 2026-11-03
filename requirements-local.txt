@@ -1,7 +1,5 @@
-# Full local install: hosted runtime + neural embeddings + dev tools.
+# Full local/dev install: backend runtime + neural embeddings + test tools.
 -r requirements.txt
-uvicorn[standard]
-requests
 sentence-transformers>=3
 pytest
 httpx
