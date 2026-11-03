@@ -60,9 +60,8 @@ export function Lines({ series, title, unit }: { series: { id: string; values: n
   );
 }
 
-export function ConfusionMatrix({ m }: { m: number[][] }) {
+export function ConfusionMatrix({ m, names = ["Negative", "Positive"] }: { m: number[][]; names?: string[] }) {
   const mx = Math.max(1, ...m.flat());
-  const names = ["Low workload", "High workload"];
   const cell = (r: number, c: number) => {
     const v = m[r][c], right = r === c;
     return <g key={`${r}${c}`} transform={`translate(${110 + c * 120},${40 + r * 80})`}>
@@ -73,10 +72,10 @@ export function ConfusionMatrix({ m }: { m: number[][] }) {
   };
   return (
     <svg viewBox="0 0 360 210" role="img" width="100%" style={{ maxWidth: 420 }}
-      aria-label={`Confusion matrix: actual low predicted low ${m[0][0]}, actual low predicted high ${m[0][1]}, actual high predicted low ${m[1][0]}, actual high predicted high ${m[1][1]}`}>
+      aria-label={`Confusion matrix: actual ${names[0]} predicted ${names[0]} ${m[0][0]}, actual ${names[0]} predicted ${names[1]} ${m[0][1]}, actual ${names[1]} predicted ${names[0]} ${m[1][0]}, actual ${names[1]} predicted ${names[1]} ${m[1][1]}`}>
       <text x={166} y={22} textAnchor="middle">PREDICTED</text>
-      {names.map((n, i) => <text key={n} x={166 + (i - 0.5) * 120} y={36} textAnchor="middle">{n.split(" ")[0]}</text>)}
-      {names.map((n, i) => <text key={n + "r"} x={104} y={80 + i * 80} textAnchor="end">{n.split(" ")[0]}</text>)}
+      {names.map((n, i) => <text key={n} x={166 + (i - 0.5) * 120} y={36} textAnchor="middle">{n}</text>)}
+      {names.map((n, i) => <text key={n + "r"} x={104} y={80 + i * 80} textAnchor="end">{n}</text>)}
       <text x={10} y={110} transform="rotate(-90 10 110)" textAnchor="middle">ACTUAL</text>
       {[0, 1].flatMap((r) => [0, 1].map((c) => cell(r, c)))}
     </svg>

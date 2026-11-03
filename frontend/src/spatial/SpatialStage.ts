@@ -18,7 +18,7 @@ export class SpatialStage {
   private cfg: StageConfig; private raf = 0; private last = 0; private frameTimes: number[] = []; private container: HTMLElement; private fixation: THREE.Group;
   private flicker: THREE.Mesh; private flash: THREE.Mesh; private mats: THREE.MeshBasicMaterial[] = []; private offset = new THREE.Vector2(); private pointer = new THREE.Vector2();
   private orient: { beta: number; gamma: number } | null = null; private useOrientation = false; private xrSession: XRSession | null = null; private fixationOn = false;
-  private onResize = () => this.resize();
+  private azMax = 0.7; private elMax = 0.35; private ro: ResizeObserver | null = null; private onResize = () => this.resize();
   private onPointer = (e: PointerEvent) => { const r = this.container.getBoundingClientRect(); this.pointer.set(((e.clientX - r.left) / r.width - 0.5) * 2, ((e.clientY - r.top) / r.height - 0.5) * 2); };
   private onOrient = (e: DeviceOrientationEvent) => { if (e.beta !== null && e.gamma !== null) this.orient = { beta: e.beta, gamma: e.gamma }; };
 
@@ -39,6 +39,7 @@ export class SpatialStage {
     this.flash.position.set(0.45, 0.28, -0.6); this.flash.renderOrder = 1000; this.camera.add(this.flash); this.scene.add(this.camera);
     this.populate(); this.resize();
     window.addEventListener("resize", this.onResize); container.addEventListener("pointermove", this.onPointer);
+    this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(container);
     this.renderer.setAnimationLoop((t) => this.frame(t)); // setAnimationLoop also drives WebXR sessions
   }
 
@@ -53,7 +54,7 @@ export class SpatialStage {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(5, 0.012, 8, 96), new THREE.MeshBasicMaterial({ color: 0x22e5ff, transparent: true, opacity: 0.35 })); ring.rotation.x = Math.PI / 2; ring.position.y = -1.39; this.scene.add(ring);
   }
   private mat(color: number, base: number) { const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: base }); (m.userData as { base: number }).base = base; this.mats.push(m); return m; }
-  private pos(it: Item) { it.mesh.position.set(Math.sin(it.az) * Math.cos(it.el) * it.r, Math.sin(it.el) * it.r, -Math.cos(it.az) * Math.cos(it.el) * it.r); }
+  private pos(it: Item) { const a = it.az * this.azMax, e = it.el * this.elMax; it.mesh.position.set(Math.sin(a) * Math.cos(e) * it.r, Math.sin(e) * it.r, -Math.cos(a) * Math.cos(e) * it.r); }  // it.az is normalised to [-1, 1]; azMax is the visible half-angle
 
   private populate() {
     this.items.forEach((i) => this.scene.remove(i.mesh)); this.items = []; this.mats = [];
@@ -61,8 +62,8 @@ export class SpatialStage {
     const n = SET_SIZES[this.cfg.complexity];
     for (let i = 0; i < n; i++) {
       const diamond = i % 2 === 0; const mesh = new THREE.Mesh(diamond ? oct : sph, this.mat(diamond ? 0x9b6bff : 0x22b8e0, 0.8));
-      const it: Item = { mesh, az: (Math.random() * 2 - 1) * 1.0, el: (Math.random() * 2 - 1) * 0.45, r: 2 + Math.random() * 2.6, vaz: (Math.random() - 0.5) * 0.25, ph: Math.random() * 6 };
-      if (Math.abs(it.az) < 0.12) it.az = Math.sign(it.az || 1) * 0.12;  // keep the midline clear so left/right is unambiguous
+      const it: Item = { mesh, az: Math.random() * 2 - 1, el: (Math.random() * 2 - 1) * 0.9, r: 2 + Math.random() * 2.6, vaz: (Math.random() - 0.5) * 0.25, ph: Math.random() * 6 };
+      if (Math.abs(it.az) < 0.15) it.az = Math.sign(it.az || 1) * 0.15;  // keep the midline clear so left/right is unambiguous
       this.pos(it); this.scene.add(mesh); this.items.push(it);
     }
     this.applyBrightness();
@@ -79,10 +80,10 @@ export class SpatialStage {
 
   showTarget(side: "left" | "right", cb: (t: number) => void) {
     this.clearTarget();
-    const az = (side === "left" ? -1 : 1) * (0.2 + Math.random() * 0.6);
+    const az = (side === "left" ? -1 : 1) * (0.25 + Math.random() * 0.6);
     const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.19), new THREE.MeshBasicMaterial({ color: 0x22f0ff, transparent: true, opacity: Math.min(1, 0.55 + 0.45 * this.cfg.brightness) }));
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: 0xffffff })); mesh.add(edges);
-    const t: Item = { mesh, az, el: (Math.random() * 2 - 1) * 0.3, r: 2.2 + Math.random() * 1.2, vaz: 0, ph: 0, target: true };
+    const t: Item = { mesh, az, el: (Math.random() * 2 - 1) * 0.6, r: 2.2 + Math.random() * 1.2, vaz: 0, ph: 0, target: true };
     this.pos(t); this.scene.add(mesh); this.target = t; this.onset = cb;
   }
   clearTarget() { if (this.target) { this.scene.remove(this.target.mesh); this.target = null; } this.onset = null; }
@@ -102,14 +103,19 @@ export class SpatialStage {
 
   private resize() {
     const w = this.container.clientWidth || 640, h = this.container.clientHeight || 400;
-    this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h, false); this.camera.aspect = w / h;
+    // keep the horizontal field of view near 85 degrees (avoids stretched edges on wide stages) and clamp the vertical one
+    const vFov = Math.min(75, Math.max(40, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(42.5)) / this.camera.aspect))));
+    this.camera.fov = vFov; this.camera.updateProjectionMatrix();
+    this.azMax = Math.atan(Math.tan(THREE.MathUtils.degToRad(vFov) / 2) * this.camera.aspect) * 0.85; this.elMax = THREE.MathUtils.degToRad(vFov / 2) * 0.8;
+    for (const it of this.items) this.pos(it); if (this.target) this.pos(this.target);
   }
 
   private frame(t: number) {
     const dt = Math.min(0.05, (t - this.last) / 1000 || 0);
     if (this.last) { this.frameTimes.push(t - this.last); if (this.frameTimes.length > 120) this.frameTimes.shift(); }
     this.last = t;
-    if (this.cfg.movement) for (const it of this.items) { it.az += it.vaz * dt; it.ph += dt; it.el += Math.sin(it.ph) * 0.02 * dt; if (it.az > 1.05) it.az = -1.0; if (it.az < -1.05) it.az = 1.0; this.pos(it); }
+    if (this.cfg.movement) for (const it of this.items) { it.az += it.vaz * dt * 1.4; it.ph += dt; it.el += Math.sin(it.ph) * 0.15 * dt; it.el = Math.max(-0.95, Math.min(0.95, it.el)); if (it.az > 1.05) it.az = -1.0; if (it.az < -1.05) it.az = 1.0; this.pos(it); }
     if (this.target && this.cfg.movement) { this.target.ph += dt; this.target.mesh.rotation.y += dt * 1.5; }
     if (this.target) this.target.mesh.rotation.y += dt * 0.8;
     if (!this.renderer.xr.isPresenting) {  // desktop/phone parallax; in WebXR the device pose drives the camera
@@ -130,7 +136,7 @@ export class SpatialStage {
   }
 
   dispose() {
-    this.renderer.setAnimationLoop(null); window.removeEventListener("resize", this.onResize); window.removeEventListener("deviceorientation", this.onOrient);
+    this.renderer.setAnimationLoop(null); this.ro?.disconnect(); window.removeEventListener("resize", this.onResize); window.removeEventListener("deviceorientation", this.onOrient);
     this.container.removeEventListener("pointermove", this.onPointer); void this.xrSession?.end().catch(() => undefined);
     this.scene.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; (Array.isArray(mat) ? mat : mat ? [mat] : []).forEach((x) => x.dispose()); });
     this.renderer.dispose(); this.renderer.domElement.remove();
