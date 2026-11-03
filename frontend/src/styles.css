@@ -121,3 +121,17 @@ details summary { cursor: pointer; font-weight: 500; } details { margin: 8px 0; 
 .slider-val { font: 500 1.4rem var(--f-mono); color: var(--cyan); min-width: 3ch; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: .8rem; color: var(--ink2); margin-top: 8px; } .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 svg text { font-family: var(--f-mono); fill: var(--ink2); font-size: 11px; }
+
+/* task stage (DOM tasks) + 3D host */
+.stagehost { width: 100%; height: min(52vh, 58vw); min-height: 280px; }
+.stage .hud { z-index: 2; }
+.taskstage { min-height: 220px; display: grid; place-items: center; text-align: center; font-family: var(--f-head); }
+.taskstage .fix { font-size: 3rem; color: #fff; }
+.taskstage .big { font-size: clamp(2.2rem, 8vw, 4rem); letter-spacing: .1em; }
+.taskstage .cue { font: 500 1.6rem var(--f-mono); letter-spacing: .2em; color: var(--cyan); }
+.cue-small { font: 500 .8rem var(--f-mono); letter-spacing: .2em; color: var(--ink2); margin-bottom: 10px; }
+.shape { display: inline-block; width: 88px; height: 88px; }
+.shape.circle { border-radius: 50%; } .shape.diamond { transform: rotate(45deg) scale(.8); border-radius: 6px; }
+.shape.cyan { background: #22e5ff; } .shape.violet { background: #9b6bff; }
+.xr-root:fullscreen { background: transparent; }
+.navtoggle { display: none; }

@@ -12,3 +12,6 @@ frontend/dist/
 .vercel/
 .DS_Store
 *.log
+/var/
+/datasets_cache/
+frontend/coverage/
