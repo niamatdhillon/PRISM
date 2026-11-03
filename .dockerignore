@@ -1,6 +1,7 @@
 .venv
 node_modules
-frontend
+frontend/node_modules
+frontend/dist
 datasets_cache
 var
 .git

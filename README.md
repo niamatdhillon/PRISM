@@ -106,19 +106,27 @@ Interpretation: modest, above-chance discrimination with wide uncertainty; a sin
 
 Consent is versioned and hashed; participants can view, export, delete sessions or withdraw (deletes all sessions/trials/reflections, invalidates their secret; a minimal consent record remains). Retention days can be set and enforced (`purge-expired` CLI or admin action). No name/email/IP/user-agent/camera/microphone data is collected. Reflections are visible only to researchers. Every export, deletion, login and configuration change is written to the audit log. Safety text covers flicker and camera use.
 
-## Deployment
+## Deployment (single service: site + API + PostgreSQL)
 
-Backend must be hosted separately from a static frontend (camera needs HTTPS; Postgres and Python ML do not fit serverless limits well):
+The backend serves the built website itself, so there is one service and one origin (HTTPS gives camera access; cookies are first-party). Ollama stays on your own machine.
 
-1. **Database + backend**: build the [Dockerfile](Dockerfile) (light profile: LSA retrieval, no torch; add `--build-arg EXTRA="sentence-transformers"` if RAM allows) on any Docker host with managed PostgreSQL. [deploy/render.yaml](deploy/render.yaml) and [docker-compose.yml](docker-compose.yml) are provided. Set `DATABASE_URL`, `PRISM_ENV=production`; run `python -m backend.cli migrate` and `create-admin` in the container.
-2. **Frontend**: copy [deploy/vercel.json.example](deploy/vercel.json.example) to `vercel.json`, replace the backend host in the rewrite (frontend and API must share one origin so cookies are first-party), then deploy `frontend/`.
-3. **Ollama** remains on a trusted local machine; do not expose it to the internet. In a hosted deployment the RAG lab works without it (extractive mode, clearly labelled) and generation is unavailable.
+**Render (blueprint in [render.yaml](render.yaml)):**
+1. Push this repo to GitHub.
+2. Render → **New + → Blueprint** → select the repo → Apply.
+3. When asked, enter `PRISM_BOOTSTRAP_ADMIN_EMAIL` (your email) and `PRISM_BOOTSTRAP_ADMIN_PASSWORD` (a strong 12+ character password). These are secret platform variables, never stored in the repo; the first admin is created on first start only if no user exists. Delete the password variable after your first sign-in.
+4. Wait for the build, open the `https://….onrender.com` URL, go to *Researcher → sign in → Study & Ollama*, and record your real ethics approval to open data collection.
+
+Notes: the free Render Postgres expires after ~30 days (use a paid plan for research data); the free web service sleeps when idle; the image uses the light LSA profile (no torch). Generation via Ollama is unavailable on a hosted server by design (extractive answers, clearly labelled). **Not run during development:** Docker build, Render deploy and PostgreSQL (the migration was tested on SQLite only).
+
+**Local, one command:** `scripts/start_local.sh` (builds the frontend and serves site + API at http://127.0.0.1:8000).
+
+Frontend-only hosting (Vercel) cannot work alone because the app needs the API; use [deploy/vercel.json.example](deploy/vercel.json.example) only if you host the API elsewhere.
 
 ## Evaluation summary of what has actually been run
 
 | Check | Result |
 |---|---|
-| Backend `pytest` (auth/RBAC, participant isolation, validation, withdrawal/deletion, no-synthetic guards, ML gating & leakage, migrations, analytics, NLP, RAG, Ollama mocks, one live Ollama test) | 81 passed |
+| Backend `pytest` (auth/RBAC, participant isolation, validation, withdrawal/deletion, no-synthetic guards, ML gating & leakage, migrations, bootstrap admin, single-service serving, analytics, NLP, RAG, Ollama mocks, one live Ollama test) | 84 passed |
 | Frontend `vitest` (generators, camera permission/fallback logic with mocked `getUserMedia`, access gating, chart rules) | 16 passed |
 | Browser (Chrome-based in-app pane): sign-in, ethics gate, enrolment, 3D visual-search session saved to the DB, camera-denied fallback, datasets ingestion, EEG model page, Ollama explanation, 375 px layout on all 11 routes | exercised manually; see below for what is not covered |
 

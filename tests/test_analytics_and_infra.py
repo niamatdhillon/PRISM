@@ -67,3 +67,34 @@ def test_health_and_errors_logged(admin):
 
 def test_security_headers(client):
     h = client.get("/api/health").headers; assert h["x-content-type-options"] == "nosniff" and "camera=(self)" in h["permissions-policy"] and h["cache-control"] == "no-store"
+
+
+def test_bootstrap_admin_creates_first_admin_only_once_and_enforces_password_policy(monkeypatch):
+    from backend import app as app_mod, config
+    monkeypatch.setattr(config, "BOOTSTRAP_ADMIN_EMAIL", "boot@example.org"); monkeypatch.setattr(config, "BOOTSTRAP_ADMIN_PASSWORD", "short")
+    assert app_mod.bootstrap_admin() is False                      # weak password refused
+    monkeypatch.setattr(config, "BOOTSTRAP_ADMIN_PASSWORD", "a-strong-bootstrap-pass")
+    assert app_mod.bootstrap_admin() is True and app_mod.bootstrap_admin() is False  # created once, never again
+    db = SessionLocal(); u = db.query(models.User).one(); assert u.role == "admin" and u.password_hash.startswith("$argon2id$"); db.close()
+    from conftest import make_client
+    assert make_client().post("/api/auth/login", json={"email": "boot@example.org", "password": "a-strong-bootstrap-pass"}).status_code == 200
+
+
+def test_bootstrap_does_nothing_when_unset_or_users_exist(monkeypatch):
+    from backend import app as app_mod, config
+    monkeypatch.setattr(config, "BOOTSTRAP_ADMIN_EMAIL", ""); assert app_mod.bootstrap_admin() is False
+    from conftest import add_user
+    add_user("existing@example.org", "admin"); monkeypatch.setattr(config, "BOOTSTRAP_ADMIN_EMAIL", "x@example.org"); monkeypatch.setattr(config, "BOOTSTRAP_ADMIN_PASSWORD", "a-strong-bootstrap-pass")
+    assert app_mod.bootstrap_admin() is False
+
+
+def test_single_service_serves_frontend_and_keeps_api_routes(tmp_path):
+    import importlib
+    (tmp_path / "index.html").write_text("<html>PRISM-SPA</html>")
+    import os; os.environ["PRISM_STATIC_DIR"] = str(tmp_path)
+    from backend import config; importlib.reload(config)
+    import backend.app as app_mod; importlib.reload(app_mod)
+    from fastapi.testclient import TestClient
+    c = TestClient(app_mod.app, headers={"x-prism-client": "web"})
+    assert "PRISM-SPA" in c.get("/").text and c.get("/api/health").json()["status"] == "ok" and c.get("/api/admin/overview").status_code == 401
+    os.environ.pop("PRISM_STATIC_DIR"); importlib.reload(config); importlib.reload(app_mod)

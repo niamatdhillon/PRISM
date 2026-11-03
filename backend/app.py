@@ -43,11 +43,39 @@ for r in (public.router, participant.router, auth.router, admin.router, admin_la
     app.include_router(r)
 
 
+def bootstrap_admin() -> bool:
+    """Create the first admin from secret env vars, only if no user exists yet. Returns True if created."""
+    if not (config.BOOTSTRAP_ADMIN_EMAIL and config.BOOTSTRAP_ADMIN_PASSWORD):
+        return False
+    from . import security
+    db = SessionLocal()
+    try:
+        if db.query(models.User).count() > 0:
+            return False
+        try:
+            h = security.hash_password(config.BOOTSTRAP_ADMIN_PASSWORD)
+        except ValueError as e:
+            log.error("bootstrap admin skipped: %s", e); return False
+        db.add(models.User(email=config.BOOTSTRAP_ADMIN_EMAIL, password_hash=h, role="admin")); db.commit()
+        db.add(models.AuditLog(actor_type="system", actor="bootstrap", action="admin_bootstrapped", target=config.BOOTSTRAP_ADMIN_EMAIL)); db.commit()
+        log.warning("bootstrap admin created: %s (remove the bootstrap env vars now)", config.BOOTSTRAP_ADMIN_EMAIL)
+        return True
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def _startup():
     # Apply migrations at startup so a fresh database (SQLite or Postgres) is always usable; failures are logged, not hidden.
     try:
         from .cli import migrate
         migrate()
+        bootstrap_admin()
     except Exception:  # noqa: BLE001
-        log.exception("migration failed at startup")
+        log.exception("startup (migration/bootstrap) failed")
+
+
+# Serve the built frontend last so /api/* routes win. Hash routing means index.html is the only HTML entry needed.
+if config.STATIC_DIR.exists() and (config.STATIC_DIR / "index.html").exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=str(config.STATIC_DIR), html=True), name="frontend")

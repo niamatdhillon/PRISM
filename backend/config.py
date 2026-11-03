@@ -28,3 +28,9 @@ ALLOW_REMOTE_OLLAMA = os.environ.get("PRISM_ALLOW_REMOTE_OLLAMA", "0") == "1"  #
 EMBED_MODEL = os.environ.get("PRISM_EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 EMBED_BACKEND = os.environ.get("PRISM_EMBEDDINGS", "auto")  # auto | lsa
 EEGMAT_DIR = Path(os.environ.get("PRISM_EEGMAT_DIR", ROOT / "datasets_cache" / "eegmat"))
+
+# Single-service deployment: the API also serves the built frontend (same origin => first-party cookies, no proxy needed).
+STATIC_DIR = Path(os.environ.get("PRISM_STATIC_DIR", ROOT / "frontend" / "dist"))
+# Optional first-admin bootstrap for hosts without a shell (set BOTH as secret env vars on the platform; used only while no user exists).
+BOOTSTRAP_ADMIN_EMAIL = os.environ.get("PRISM_BOOTSTRAP_ADMIN_EMAIL", "").strip().lower()
+BOOTSTRAP_ADMIN_PASSWORD = os.environ.get("PRISM_BOOTSTRAP_ADMIN_PASSWORD", "")
