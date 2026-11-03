@@ -48,8 +48,9 @@ export function arithmeticItems(n: number, rng: Rng = Math.random): ArithSpec[] 
 }
 
 export function oddballSequence(n: number, pDeviant = 0.25, rng: Rng = Math.random): ("standard" | "deviant")[] {
-  const nDev = Math.round(n * pDeviant);
-  const seq = shuffle([...Array(nDev).fill("deviant"), ...Array(n - nDev).fill("standard")] as ("standard" | "deviant")[], rng);
-  for (let i = 1; i < seq.length; i++) if (seq[i] === "deviant" && seq[i - 1] === "deviant") { const j = seq.findIndex((v, k) => k > i && v === "standard" && seq[k - 1] !== "deviant"); if (j > 0) [seq[i], seq[j]] = [seq[j], seq[i]]; }
+  const k = Math.round(n * pDeviant);
+  // choose k non-adjacent positions: pick k of (n-k+1) slots, then shift slot i by i
+  const slots = shuffle(Array.from({ length: n - k + 1 }, (_, i) => i), rng).slice(0, k).sort((a, b) => a - b).map((x, i) => x + i);
+  const seq: ("standard" | "deviant")[] = Array(n).fill("standard"); slots.forEach((i) => { seq[i] = "deviant"; });
   return seq;
 }

@@ -1,0 +1,49 @@
+import { useEffect, useState } from "react";
+import { api } from "../api";
+import { ConfusionMatrix, HBars } from "../components/Charts";
+import { ErrorBox, Note, SourceTag, Spinner, Tabs } from "../components/ui";
+import type { Any } from "../types";
+
+function Result({ r, classes }: { r: Any; classes: string[] }) {
+  const [exp, setExp] = useState<Any>(null); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const explain = async () => { setBusy(true); setErr(null); try { setExp(await api.admin.mlExplain(r.run_id)); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  if (r.status === "awaiting_data" || r.status === "insufficient_data") return <Note kind="bad"><span className="badge b-bad">{r.label}</span><p style={{ marginTop: 8 }}>{r.message}</p>{r.n_sessions !== undefined && <p className="small mono">sessions {r.n_sessions} · participants {r.n_participants} · classes {JSON.stringify(r.class_counts)}</p>}<p className="small">No metric, curve or importance is shown because none can be validly estimated.</p></Note>;
+  const m = r.test_selected, sp = r.split;
+  return (
+    <>
+      <div className="note info"><span className="badge b-real">{r.label}</span><p className="small" style={{ marginTop: 8 }}>{r.data_source} · target: {r.target}</p>
+        <p className="mono small">{r.n_sessions ?? r.n_epochs} rows · {r.n_participants ?? r.n_subjects} participants/subjects · train {sp.n_train_rows} rows / {sp.n_train_groups} groups · test {sp.n_test_rows} / {sp.n_test_groups} (test classes {JSON.stringify(sp.test_class_counts)}) · seed {sp.seed}<br />{sp.method}</p></div>
+      <div className="panel"><h3>Selected model: {r.selected_model.replace(/_/g, " ")}</h3><p className="small">Chosen by {r.selection_criterion}. The test set was used once, after selection.</p>
+        <div className="grid g4">{(["accuracy", "precision", "recall", "f1", "roc_auc", "pr_auc", "balanced_accuracy", "brier"] as const).map((k) => <div key={k}><div className="stat" style={{ fontSize: "2rem" }}>{m[k]}</div><div className="stat-l">{k.replace("_", "-")}</div></div>)}</div>
+        <p className="small mt">95% CI (participant-cluster bootstrap on the test set): ROC-AUC {r.uncertainty.roc_auc_ci95?.join(" – ")} · F1 {r.uncertainty.f1_ci95?.join(" – ")}. With so few held-out participants these intervals are wide.</p></div>
+      <div className="scroll-x panel mt"><h3>All candidates and baselines</h3><table><thead><tr><th>Model</th><th className="num">CV PR-AUC (train)</th><th className="num">CV ROC-AUC</th><th className="num">Test acc.</th><th className="num">Test F1</th><th className="num">Test ROC-AUC</th><th className="num">Test PR-AUC</th></tr></thead>
+        <tbody>{Object.entries(r.test_all_models).map(([k, t]: [string, Any]) => { const c = r.cv_train[k]; return <tr key={k}><td>{k.replace(/_/g, " ")}{k === r.selected_model ? " ✓" : ""}</td><td className="num">{c ? `${c.cv_pr_auc} ± ${c.cv_pr_auc_sd}` : "—"}</td><td className="num">{c?.cv_roc_auc ?? "—"}</td><td className="num">{t.accuracy}</td><td className="num">{t.f1}</td><td className="num">{t.roc_auc}</td><td className="num">{t.pr_auc}</td></tr>; })}</tbody></table>
+        <small>Majority baseline always predicts one class (F1 0 for the positive class); “prior” baseline predicts by class prior. A model must clearly beat both to mean anything.</small></div>
+      <div className="grid g2 mt">
+        <div className="panel"><h3>Confusion matrix (test)</h3><ConfusionMatrix m={r.test_selected_confusion_matrix} names={classes} /><small>Rows actual, columns predicted; threshold 0.5.</small></div>
+        <div className="panel"><h3>Permutation importance (test, ROC-AUC drop)</h3><HBars title="Importance" data={r.permutation_importance_test.slice(0, 10).map((c: Any) => ({ label: c.feature, value: c.mean }))} /><small>Importance ≠ causation; correlated features share credit.</small></div>
+        <div className="panel"><h3>Calibration (5 quantile bins)</h3><table><thead><tr><th className="num">Mean predicted</th><th className="num">Observed fraction</th></tr></thead><tbody>{r.calibration.bins.map((b: Any, i: number) => <tr key={i}><td className="num">{b.mean_predicted}</td><td className="num">{b.fraction_positive}</td></tr>)}</tbody></table><small>Brier {r.calibration.brier}. {r.calibration.note}</small></div>
+        <div className="panel"><h3>Limitations</h3><ul className="clean small">{r.limitations.map((l: string) => <li key={l}>{l}</li>)}</ul></div></div>
+      <div className="panel mt"><h3>Plain-language explanation (Ollama)</h3><p className="small">A local language model rewrites the stored metrics above in words. It cannot change or add results; numbers in its text are checked against the evaluation.</p>
+        <button className="btn sm" disabled={busy} onClick={explain}>Explain this run</button>{busy && <Spinner />}<ErrorBox error={err} />
+        {exp && <div className="answer mt"><span className="badge b-real">✦ GENERATED by {exp.model}</span><p style={{ marginTop: 8 }}>{exp.text}</p><small>{exp.verified ? "✓ every number in this text appears in the evaluation" : `⚠ numbers not found in the evaluation: ${exp.unverified_numbers.join(", ")}`} · {exp.note}</small></div>}</div>
+    </>
+  );
+}
+
+export default function Predict() {
+  const [tab, setTab] = useState("behavioural"); const [res, setRes] = useState<Record<string, Any>>({}); const [busy, setBusy] = useState(false); const [err, setErr] = useState<unknown>(null);
+  const run = async (which: string) => { setBusy(true); setErr(null); try { setRes((r) => ({ ...r, [which]: null })); const x = which === "behavioural" ? await api.admin.mlBehavioural() : await api.admin.mlEeg(); setRes((r) => ({ ...r, [which]: x })); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  useEffect(() => { void run(tab); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tab]);
+  return (
+    <>
+      <Note kind="info">Predictive machine learning is separate from language modelling: models are trained with scikit-learn on real data only. Evaluation uses participant/subject-grouped splits, model selection inside the training participants, a single final test, baselines, PR/ROC-AUC, calibration and bootstrap uncertainty. No synthetic data exists in this application.</Note>
+      <Tabs value={tab} onChange={setTab} tabs={[{ id: "behavioural", label: "PRISM behavioural → workload" }, { id: "eeg", label: "Public EEG → rest vs mental arithmetic" }]} />
+      <div className="row" style={{ marginBottom: 10 }}>{tab === "behavioural" ? <SourceTag source="prism" /> : <SourceTag source="public" />}<button className="btn sm ghost" disabled={busy} onClick={() => run(tab)}>Re-run evaluation</button></div>
+      <ErrorBox error={err} />{busy && <Spinner label="Training and evaluating…" />}
+      {tab === "behavioural" && <p className="small">Target: raw NASA-TLX ≥ 50 per session. Requires ≥ 60 completed sessions from ≥ 20 participants with ≥ 15 per class; below that the page states INSUFFICIENT DATA and shows no performance.</p>}
+      {tab === "eeg" && <p className="small">Dataset: PhysioNet eegmat (36 subjects; ODC-By 1.0). Target is the experimental condition, not a self-report. This model demonstrates the evaluation pipeline on real physiological data and says nothing about PRISM’s behavioural data.</p>}
+      {res[tab] && <Result r={res[tab]} classes={tab === "eeg" ? ["Rest", "Task"] : ["Low", "High"]} />}
+    </>
+  );
+}

@@ -1,10 +1,19 @@
 import { ReactNode, useEffect, useState } from "react";
-import type { Source } from "../types";
 
-export function SourceBadge({ source }: { source: Source | "public" }) {
-  if (source === "participant") return <span className="badge b-real">● Participant observations</span>;
-  if (source === "synthetic") return <span className="badge b-synth">▲ Synthetic demonstration data</span>;
-  return <span className="badge b-pub">◆ Public dataset / literature</span>;
+
+export function SourceTag({ source }: { source: "prism" | "public" | "literature" }) {
+  if (source === "prism") return <span className="badge b-real">● PRISM participant observations</span>;
+  if (source === "public") return <span className="badge b-pub">◆ Public dataset</span>;
+  return <span className="badge b-info">≡ Scientific literature</span>;
+}
+export const Empty = ({ children }: { children: ReactNode }) => <div className="note info" role="status">{children}</div>;
+/** Every chart sits in a ChartCard that states its data source, sample size and limitation; with n = 0 it shows an explanation instead of an empty chart. */
+export function ChartCard({ title, source, n, unit = "sessions", limits, children }: { title: string; source: "prism" | "public" | "literature"; n: number; unit?: string; limits?: string; children: ReactNode }) {
+  return (
+    <div className="panel"><div className="row spread"><h3 style={{ margin: 0 }}>{title}</h3><SourceTag source={source} /></div>
+      {n > 0 ? <div style={{ marginTop: 10 }}>{children}</div> : <Empty>No data yet — nothing to chart.</Empty>}
+      <small className="mono" style={{ display: "block", marginTop: 8 }}>n = {n} {unit}{limits ? ` · ${limits}` : ""}</small></div>
+  );
 }
 export const Note = ({ kind = "warn", children }: { kind?: "warn" | "info" | "bad"; children: ReactNode }) =>
   <div className={"note " + (kind === "warn" ? "" : kind)} role="note">{children}</div>;

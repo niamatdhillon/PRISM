@@ -36,7 +36,7 @@ export default function Lab({ preset }: { preset: string | null }) {
 
   useEffect(() => { detectCapabilities().then((c) => { setCaps(c); setMode(c.webgl ? "scene3d" : "canvas2d"); }); }, []);
   useEffect(() => { if (study && !open) { setPracticeOnly(true); } }, [study, open]);
-  useEffect(() => { if (me && phase === "consent") setPhase("pre"); }, [me, phase]);
+  useEffect(() => { if (me && !enrolled && phase === "consent") setPhase("pre"); }, [me, enrolled, phase]);  // returning participants skip consent; new ones see their recovery code first
   useEffect(() => { if (study && !open && phase === "consent") setPhase("pre"); }, [study, open, phase]);
 
   const ordered = useMemo(() => ORDER.filter((t) => tasks.includes(t)), [tasks]);

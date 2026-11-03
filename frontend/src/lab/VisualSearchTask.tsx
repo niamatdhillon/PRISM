@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FieldEngine, SET_SIZES, Tone } from "../components/fieldEngine";
-import { SpatialStage } from "../spatial/SpatialStage";
+import type { SpatialStage } from "../spatial/SpatialStage";  // loaded lazily (three.js is large)
 import { CameraController, describeCameraError } from "../spatial/camera";
 import type { Capabilities } from "../spatial/capabilities";
 import type { Condition, DisplayMode, Trial } from "../types";
@@ -20,22 +20,26 @@ export function VisualSearchTask({ requestedMode, caps, cond, audioOn, tone, sta
   const [mode, setMode] = useState<DisplayMode>(requestedMode === "webxr" || requestedMode === "camera_overlay" ? requestedMode : caps.webgl ? requestedMode : "canvas2d");
   const [camOn, setCamOn] = useState(false); const [facing, setFacing] = useState<"user" | "environment">("environment");
   const [msg, setMsg] = useState<string>(""); const [phase, setPhase] = useState<"ready" | "running">("ready"); const [feedback, setFeedback] = useState(""); const [hud, setHud] = useState("");
-  const [answers, setAnswers] = useState(false); const [muted, setMuted] = useState(false); const [vol, setVol] = useState(0.3); const [tilt, setTilt] = useState(false); const [xrOn, setXrOn] = useState(false);
+  const [stageReady, setStageReady] = useState(0); const [answers, setAnswers] = useState(false); const [muted, setMuted] = useState(false); const [vol, setVol] = useState(0.3); const [tilt, setTilt] = useState(false); const [xrOn, setXrOn] = useState(false);
   const resp = useRef<((v: string, ts: number) => void) | null>(null); const alive = useRef(true); const mutedRef = useRef(false); const camUsedEver = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { mutedRef.current = muted; }, [muted]); useEffect(() => { tone.volume = vol; }, [vol, tone]);
 
   // (re)build the stage when the effective mode changes
   useEffect(() => {
-    const el = host.current!; el.innerHTML = "";
+    const el = host.current!; el.innerHTML = ""; let cancelled = false;
     if (mode === "canvas2d" || !caps.webgl) {
       const c = document.createElement("canvas"); c.style.cssText = "width:100%;height:100%;display:block"; el.appendChild(c);
       const f = new FieldEngine(c, { ...cond }); stage.current = { showTarget: (s, cb) => f.showTarget(s, cb), clearTarget: () => f.clearTarget(), setFixation: (o) => f.setFixation(o), setConfig: (c2) => f.setConfig(c2 as never), destroy: () => f.destroy() }; spatial.current = null;
     } else {
-      const s = new SpatialStage(el, mode, cond); spatial.current = s;
-      stage.current = { showTarget: (side, cb) => s.showTarget(side, cb), clearTarget: () => s.clearTarget(), setFixation: (o) => s.setFixation(o), setConfig: (c2) => s.setConfig(c2 as never), destroy: () => s.dispose() };
+      void import("../spatial/SpatialStage").then(({ SpatialStage: SS }) => {
+        if (cancelled) return;
+        const s = new SS(el, mode, cond); spatial.current = s;
+        stage.current = { showTarget: (side, cb) => s.showTarget(side, cb), clearTarget: () => s.clearTarget(), setFixation: (o) => s.setFixation(o), setConfig: (c2) => s.setConfig(c2 as never), destroy: () => s.dispose() };
+        setStageReady((n) => n + 1);
+      });
     }
-    return () => { stage.current?.destroy(); stage.current = null; spatial.current = null; };
+    return () => { cancelled = true; stage.current?.destroy(); stage.current = null; spatial.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
   useEffect(() => { stage.current?.setConfig(cond); }, [cond]);
@@ -120,7 +124,7 @@ export function VisualSearchTask({ requestedMode, caps, cond, audioOn, tone, sta
           {phase === "ready" && <button className="btn sm ghost" onClick={() => tone.beep(880, 0.09)}>Test tone</button>}</>}
       </div>
       {phase === "ready" && <div className="mt"><p className="small"><strong>Instructions:</strong> find the <strong style={{ color: "var(--cyan)" }}>bright cyan octahedron</strong> (not the violet ones, not the spheres) and say whether it is on the <strong>left</strong> or <strong>right</strong> of the centre — buttons below, or keys F / J. 3 practice trials come first. Be fast and accurate.</p>
-        <button className="btn" disabled={(mode === "camera_overlay" && !camOn) || (mode === "webxr" && !xrOn)} onClick={run}>Begin visual search</button>
+        <button className="btn" disabled={!stage.current && stageReady === 0 || (mode === "camera_overlay" && !camOn) || (mode === "webxr" && !xrOn)} onClick={run}>Begin visual search</button>
         {mode === "camera_overlay" && !camOn && <small> Start the camera first, or continue without it.</small>}{mode === "webxr" && !xrOn && <small> Enter the AR session first, or use the 3D environment.</small>}</div>}
     </div>
   );
