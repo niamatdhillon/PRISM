@@ -27,3 +27,10 @@ def study(db: Session = Depends(get_db)):
         "consent": {"version": consent.CONSENT_VERSION, "paragraphs": consent.CONSENT_PARAGRAPHS},
         "protocol": {"version": protocol.PROTOCOL_VERSION, "tasks": protocol.TASKS, "display_modes": protocol.DISPLAY_MODES},
     }
+
+
+@router.get("/public/literature")
+def literature():
+    from .. import rag
+    docs = rag.load_documents()
+    return {"documents": [{k: d.get(k) for k in ("id", "title", "authors", "venue", "year", "doi", "pmid", "url", "topic")} for d in docs]}
