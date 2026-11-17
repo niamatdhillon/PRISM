@@ -73,7 +73,7 @@ In *Study & Ollama* choose the model and press *Test generation*. The backend ta
 
 - **NLP:** normalisation, tokenisation, stop-words, light stemming (TF-IDF) and dictionary lemmas (simplemma), linguistic features, TF-IDF terms, RAKE-style keyphrases, theme lexicons, VADER sentiment (descriptive only, with caveats), NMF theme modelling over real reflections (refuses below 10 reflections).
 - **RAG:** 25 abstracts → 102 three-sentence chunks → TF-IDF + `all-MiniLM-L6-v2` embeddings in a FAISS `IndexFlatIP` (persisted) → hybrid reciprocal-rank fusion → insufficient-evidence gate → Ollama (numbered-passage prompt) or extractive fallback → verification (each citation exists; ≥50% lexical support; no author-year/DOI references outside the retrieved sources).
-- **Retrieval evaluation (measured on the dev machine, neural embeddings):** 25 queries, single annotator (the AI that built PRISM), document-level, written after reading the abstracts → optimistic.
+- **Retrieval evaluation (measured on the dev machine, neural embeddings):** 25 queries, single annotator from the development side (not independent or expert-validated), document-level, written after reading the abstracts → optimistic.
 
 | Method | P@1 | P@3 | P@5 | R@3 | R@5 | MRR |
 |---|---|---|---|---|---|---|

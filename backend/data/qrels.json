@@ -1,5 +1,5 @@
 {
- "annotation": "Single annotator (the AI assistant that built PRISM), document-level judgements made by reading each title+abstract. Queries were written after reading the abstracts, so scores are optimistic. 25 queries, not expert-validated: treat as a smoke test of retrieval behaviour, not a benchmark.",
+ "annotation": "Single annotator from the development side (not independent, not expert-validated), document-level judgements made by reading each title+abstract. Queries were written after reading the abstracts, so scores are optimistic. 25 queries, not expert-validated: treat as a smoke test of retrieval behaviour, not a benchmark.",
  "queries": [
   {
    "id": "q01",
