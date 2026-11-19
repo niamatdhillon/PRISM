@@ -6,7 +6,7 @@ PRISM keeps three kinds of data strictly separate and never merges them without 
 |---|---|---|
 | **A. PRISM participant observations** | Consented sessions collected by this application | Admin dashboard, behavioural model |
 | **B. Public research datasets** | PhysioNet *eegmat* (below) | Admin → Datasets / Prediction (separate model) |
-| **C. Scientific literature** | 25 abstracts (Europe PMC / arXiv) | RAG corpus only |
+| **C. Scientific literature** | 26 abstracts (Europe PMC / arXiv) | RAG corpus only |
 
 **There is no synthetic or simulated research data anywhere in PRISM** (the earlier generator was removed; a test asserts it stays removed).
 
@@ -48,4 +48,4 @@ Only catalogue metadata (Zenodo API) was inspected; contents were **not** verifi
 
 ## C. Literature corpus
 
-25 documents: titles, authors, venue, year, DOI/PMID/arXiv id and abstract retrieved by `scripts/fetch_corpus.py` from the Europe PMC and arXiv APIs (identifiers were checked against API metadata; several identifiers recalled from memory were wrong and were corrected). See `backend/data/corpus_raw.json`. Only abstracts are stored; copyright remains with the publishers/authors.
+26 documents: titles, authors, venue, year, DOI/PMID/arXiv id and abstract retrieved by `scripts/fetch_corpus.py` from the Europe PMC and arXiv APIs (identifiers were checked against API metadata; several identifiers recalled from memory were wrong and were corrected). See `backend/data/corpus_raw.json`. Only abstracts are stored; copyright remains with the publishers/authors.

@@ -59,7 +59,7 @@ Common protocol (`ml_common.py`): participant-grouped hold-out (25%) → model s
 
 ## RAG
 
-25 abstracts → 3-sentence chunks (stride 2) with offsets → TF-IDF (light stemmer) and MiniLM embeddings (LSA fallback in the light image) → FAISS `IndexFlatIP` (persisted under `var/rag_index`) → hybrid reciprocal-rank fusion → sufficiency gate → Ollama (numbered-passage prompt) or extractive fallback → verification (citations exist, ≥50% lexical support, no author-year/DOI references outside the retrieved sources). Ollama can also paraphrase a single reflection and explain a stored model run; numbers in the explanation are string-checked against the stored evaluation.
+26 abstracts → 3-sentence chunks (stride 2) with offsets → TF-IDF (light stemmer) and MiniLM embeddings (LSA fallback in the light image) → FAISS `IndexFlatIP` (persisted under `var/rag_index`) → hybrid reciprocal-rank fusion → sufficiency gate → Ollama (numbered-passage prompt) or extractive fallback → verification (citations exist, ≥50% lexical support, no author-year/DOI references outside the retrieved sources). Ollama can also paraphrase a single reflection and explain a stored model run; numbers in the explanation are string-checked against the stored evaluation.
 
 ## Deployment shape
 
