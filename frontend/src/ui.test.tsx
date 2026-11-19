@@ -20,13 +20,20 @@ describe("access control in the UI (server enforces it too)", () => {
     expect(await screen.findByRole("heading", { name: /sign in/i })).toBeInTheDocument();
     expect(screen.queryByText(/participants/i, { selector: "nav a" })).toBeNull(); expect(calls.filter((c) => c.startsWith("/api/admin"))).toHaveLength(0);
   });
-  it("public navigation never lists researcher pages for non-staff", async () => {
-    mockFetch(base); render(<App />); await screen.findByText(/Enter the sensory lab/);
-    const nav = screen.getByRole("navigation", { name: "Primary" }); expect(nav).not.toHaveTextContent(/Researcher/); expect(nav).toHaveTextContent(/Participate/);
+  it("public navigation lists the five public areas and never researcher pages for non-staff", async () => {
+    mockFetch(base); render(<App />); await screen.findByText(/Enter the Sensory Lab/);
+    const nav = screen.getByRole("navigation", { name: "Primary" }); for (const l of ["Home", "About", "Explore", "Sensory Lab", "Research"]) expect(nav).toHaveTextContent(l); expect(nav).not.toHaveTextContent(/Researcher/);
   });
-  it("shows closed-study banner and no synthetic/demo controls", async () => {
-    mockFetch(base); render(<App />); expect(await screen.findByText(/Data collection is currently closed/)).toBeInTheDocument();
-    expect(document.body.textContent?.toLowerCase()).not.toMatch(/synthetic|load demo/);
+  it("never shows alarming, internal or demo-data wording to ordinary visitors", async () => {
+    mockFetch(base); render(<App />); await screen.findByText(/Enter the Sensory Lab/);
+    const t = document.body.textContent?.toLowerCase() ?? "";
+    for (const bad of ["practice mode", "no ethics approval is recorded", "study closed", "synthetic", "load demo", "localhost", "traceback"]) expect(t).not.toContain(bad);
+    expect(t).toContain("demo session");
+  });
+  it("Sensory Lab opens as a calm demo session when collection is closed and offers no admin controls", async () => {
+    mockFetch(base); location.hash = "#/lab"; render(<App />);
+    expect((await screen.findAllByText(/Demo session/)).length).toBeGreaterThan(0); expect(document.body.textContent).not.toMatch(/ethics approval is recorded|nothing is stored/i);
+    expect(screen.queryByText(/Study & Ollama|Ingest dataset|Retention/i)).toBeNull();
   });
   it("My data for an unenrolled visitor offers restore only and fetches no sessions", async () => {
     const calls = mockFetch(base); location.hash = "#/my-data"; render(<App />);

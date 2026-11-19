@@ -2,14 +2,27 @@ import type { Any, SessionPayload } from "./types";
 
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
+const FRIENDLY: Record<number, string> = {
+  401: "Please sign in to continue.", 403: "You don't have access to this area.", 404: "We couldn't find that.", 409: "That conflicts with existing data. Please refresh and try again.",
+  422: "Some of the information isn't valid. Please check it and try again.", 429: "You're going a little fast — please wait a moment.", 500: "Something went wrong on our side. Please try again.",
+  502: "A connected service didn't respond as expected.", 503: "The service is starting up. Please retry in a moment.", 504: "That took too long. Please try again.",
+};
+/** Server messages are shown when they are short, human-readable and not a server fault; otherwise a friendly generic message is used. */
+function friendly(status: number, detail: unknown): string {
+  if (typeof detail === "string" && detail.length < 220 && status < 500 && !/traceback|exception|sqlalchemy|errno|0x[0-9a-f]{4,}/i.test(detail)) return detail;
+  return FRIENDLY[status] || "Something unexpected happened. Please try again.";
+}
+
 async function req<T = Any>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method || "GET").toUpperCase();
   const headers: Record<string, string> = { "Content-Type": "application/json", ...(method !== "GET" ? { "X-PRISM-Client": "web" } : {}) };
-  const r = await fetch(path, { credentials: "same-origin", ...init, headers: { ...headers, ...(init.headers as Record<string, string> | undefined) } });
+  let r: Response;
+  try { r = await fetch(path, { credentials: "same-origin", ...init, headers: { ...headers, ...(init.headers as Record<string, string> | undefined) } }); }
+  catch { throw new ApiError(0, "We can't reach the server. Please check your connection and try again."); }
   if (!r.ok) {
-    let msg = `${r.status} ${r.statusText}`;
-    try { const j = await r.json(); msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail).slice(0, 300); } catch { /* keep */ }
-    throw new ApiError(r.status, msg);
+    let detail: unknown = null;
+    try { const j = await r.json(); detail = Array.isArray(j.detail) ? null : j.detail; } catch { /* non-JSON error body */ }
+    throw new ApiError(r.status, friendly(r.status, detail));
   }
   const ct = r.headers.get("content-type") || "";
   return (ct.includes("json") ? r.json() : r.text()) as Promise<T>;
@@ -17,6 +30,11 @@ async function req<T = Any>(path: string, init: RequestInit = {}): Promise<T> {
 const post = <T = Any>(p: string, body?: unknown) => req<T>(p, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 const put = <T = Any>(p: string, body?: unknown) => req<T>(p, { method: "PUT", body: JSON.stringify(body ?? {}) });
 const del = <T = Any>(p: string) => req<T>(p, { method: "DELETE" });
+
+export const demo = {
+  capabilities: () => req("/api/public/capabilities"), nlp: (text: string) => post("/api/demo/nlp/analyze", { text }), search: (query: string, k = 5) => post("/api/demo/rag/search", { query, k }),
+  ask: (question: string, use_llm: boolean) => post("/api/demo/rag/ask", { question, use_llm }), ragEval: () => req("/api/public/rag-evaluation"), eeg: () => req("/api/public/eeg-model"), literature: () => req("/api/public/literature"),
+};
 
 export const api = {
   health: () => req("/api/health"),

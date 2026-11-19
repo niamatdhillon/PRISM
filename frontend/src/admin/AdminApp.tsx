@@ -19,9 +19,13 @@ export default function AdminApp({ sub }: { sub: string }) {
   return (
     <div className="wrap" style={{ paddingTop: 30 }}>
       <div className="row spread"><div><span className="kicker">Researcher area</span><h2 style={{ margin: 0 }}>Signed in as {staff.email} <span className="badge b-info">{staff.role}</span></h2></div></div>
-      <nav className="subnav mt" aria-label="Researcher">{TABS.map(([p, l]) => <a key={p} href={"#/admin" + (p ? "/" + p : "")} aria-current={p === page ? "page" : undefined}>{l}</a>)}</nav>
-      {page === "" && <Dashboard />}{page === "participants" && <Participants role={staff.role} />}{page === "datasets" && <Datasets role={staff.role} />}
-      {page === "nlp" && <NlpRag />}{page === "prediction" && <Predict />}{page === "settings" && <Settings role={staff.role} />}{page === "system" && <System />}
+      <div className="admin-shell mt">
+        <nav className="subnav" aria-label="Researcher">{TABS.map(([p, l]) => <a key={p} href={"#/admin" + (p ? "/" + p : "")} aria-current={p === page ? "page" : undefined}>{l}</a>)}</nav>
+        <section aria-live="polite">
+          {page === "" && <Dashboard />}{page === "participants" && <Participants role={staff.role} />}{page === "datasets" && <Datasets role={staff.role} />}
+          {page === "nlp" && <NlpRag />}{page === "prediction" && <Predict />}{page === "settings" && <Settings role={staff.role} />}{page === "system" && <System />}
+        </section>
+      </div>
     </div>
   );
 }

@@ -69,21 +69,25 @@ export default function Lab({ preset }: { preset: string | null }) {
   if (!study) return <div className="wrap" style={{ paddingTop: 40 }}><p>Loading study information…</p></div>;
   return (
     <div className="wrap" style={{ paddingTop: 36 }}>
-      <span className="kicker">Sensory laboratory</span><h2>Participate in a PRISM session</h2>
+      <span className="kicker">Sensory Lab</span><h2>Run a session</h2>
       <ol className="row mono" style={{ listStyle: "none", padding: 0, margin: "0 0 18px" }} aria-label="Progress">{steps.map((s, i) => <li key={s} className="badge" style={{ borderColor: i === si ? "var(--cyan)" : "var(--line)", color: i === si ? "var(--cyan)" : "var(--ink3)" }} aria-current={i === si ? "step" : undefined}>{i + 1}. {s}</li>)}</ol>
-      {practiceOnly && <Note kind="bad"><strong>Practice mode — nothing is stored.</strong> Data collection is closed because no ethics approval is recorded for this study. You can try the tasks; no data is sent or saved.</Note>}
+      {practiceOnly && <div className="demo-chip" role="status"><span className="badge b-info">◇ Demo session</span><span className="small">Try every task and see your results here. Demo sessions aren’t saved. <a href="#/research">Research participation</a> opens once the study is approved.</span></div>}
       {p0 && phase === "consent" && <Note kind="info">{p0.note}</Note>}
       <ErrorBox error={err} />
 
-      {phase === "consent" && open && !me && (
-        <div className="panel"><h3>Informed consent ({study.consent.version})</h3>
-          <p className="small mono">Ethics approval: {study.ethics?.body} · ref {study.ethics?.reference}{study.ethics?.approved_on ? ` · ${study.ethics.approved_on}` : ""}</p>
-          {study.consent.paragraphs.map((p, i) => <p key={i} className="small">{p}</p>)}
-          {["I am 18 or over and I understand this is a research study, not a medical or diagnostic test.", "I consent to PRISM recording the study data described above.", "I understand I can view, download and delete my data, withdraw, and stop at any time."].map((t, i) => (
-            <label key={i} className="check"><input type="checkbox" checked={checks[i]} onChange={(e) => setChecks((c) => c.map((x, j) => (j === i ? e.target.checked : x)))} />{t}</label>))}
-          {!enrolled ? <button className="btn" disabled={!checks.every(Boolean)} onClick={enroll}>I consent — create my participant code</button> : (
-            <div className="note info"><p>Your participant code: <strong className="mono">{enrolled.code}</strong></p>
-              <p className="small">Recovery code (shown once; lets you access your data from another device):</p><p className="mono" style={{ wordBreak: "break-all" }}>{enrolled.recovery_code}</p>
+      {phase === "consent" && open && (!me || enrolled) && (
+        <div className="panel"><span className="kicker">Join the study</span><h3>Before you begin</h3>
+          <div className="grid g3" style={{ marginBottom: 14 }}>
+            <div className="mini"><strong>What you’ll do</strong><p className="small">Short computer tasks and a few rating questions, about 3–10 minutes. The camera and sound are optional.</p></div>
+            <div className="mini"><strong>Your data</strong><p className="small">A random participant code, your responses and timings, ratings and an optional reflection. No name, email or camera images.</p></div>
+            <div className="mini"><strong>Your rights</strong><p className="small">View, download or delete your data, or withdraw, at any time from <em>My data</em>. Taking part is voluntary.</p></div></div>
+          <p className="small mono">Approved by {study.ethics?.body} · ref {study.ethics?.reference}{study.ethics?.approved_on ? ` · ${study.ethics.approved_on}` : ""} · consent {study.consent.version}</p>
+          <details><summary>Read the full consent information</summary>{study.consent.paragraphs.map((p, i) => <p key={i} className="small">{p}</p>)}</details>
+          <div style={{ marginTop: 14 }}>{["I am 18 or over and understand this is a research study, not a medical or diagnostic test.", "I consent to PRISM recording the study data described above.", "I understand I can view, download and delete my data, withdraw, and stop at any time."].map((t, i) => (
+            <label key={i} className="check"><input type="checkbox" checked={checks[i]} onChange={(e) => setChecks((c) => c.map((x, j) => (j === i ? e.target.checked : x)))} />{t}</label>))}</div>
+          {!enrolled ? <button className="btn" disabled={!checks.every(Boolean)} onClick={enroll}>I consent — continue</button> : (
+            <div className="note info"><p><strong>You’re in.</strong> Your participant code is <strong className="mono">{enrolled.code}</strong>.</p>
+              <p className="small">Keep this recovery code if you want to reach your data from another device — it is shown only once:</p><p className="mono" style={{ wordBreak: "break-all" }}>{enrolled.recovery_code}</p>
               <div className="row"><button className="btn sm ghost" onClick={() => navigator.clipboard?.writeText(enrolled.recovery_code)}>Copy recovery code</button><button className="btn" onClick={() => setPhase("pre")}>Continue</button></div></div>)}
         </div>)}
 
@@ -92,7 +96,7 @@ export default function Lab({ preset }: { preset: string | null }) {
         <button className="btn" onClick={() => setPhase("setup")}>Continue</button></div>}
 
       {phase === "setup" && caps && (
-        <div className="panel"><h3>Choose tasks and environment</h3>
+        <div className="panel"><h3>Set up your session</h3>
           <fieldset style={{ border: 0, padding: 0 }}><legend className="mono">Tasks (at least one)</legend>
             {ORDER.map((t) => { const s = study.protocol.tasks[t]; const blocked = t === "auditory_oddball" && !caps.audio; return (
               <label key={t} className="check"><input type="checkbox" checked={tasks.includes(t)} disabled={blocked} onChange={() => toggleTask(t)} /><span><strong>{s.title}</strong> <small>({s.trials} trials) — {s.objective}</small>{blocked && <small> Audio is unavailable on this device.</small>}</span></label>); })}</fieldset>
@@ -141,7 +145,7 @@ export default function Lab({ preset }: { preset: string | null }) {
           <textarea id="refl" value={reflection} maxLength={4000} onChange={(e) => setReflection(e.target.value)} />
           <small>Please avoid names or personal details. Reflections are described with text statistics only; they are never used to infer stress or health.</small>
           {tlxN < 6 && <Note>{6 - tlxN} workload item(s) unanswered; the TLX score will be missing for this session (flagged in analyses).</Note>}
-          <div className="row mt"><button className="btn" disabled={saving} onClick={finish}>{practiceOnly ? "Finish (not stored)" : "Save session"}</button>
+          <div className="row mt"><button className="btn" disabled={saving} onClick={finish}>{practiceOnly ? "See my results" : "Save session"}</button>
             {saved && !!err && <button className="btn ghost" onClick={() => download(`prism-${saved.session_id}.json`, JSON.stringify(saved, null, 1), "application/json")}>Download record (JSON)</button>}</div></div>)}
 
       {phase === "done" && saved && <Done rec={saved} stored={!practiceOnly} again={() => { setPhase("pre"); setRatings(NULL_R); setReflection(""); setSaved(null); setTaskPos(0); }} />}
@@ -176,8 +180,8 @@ function Done({ rec, stored, again }: { rec: SessionPayload; stored: boolean; ag
   const t = rec.trials; const mean = (a: number[]) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : null);
   const per = rec.tasks_completed.map((k) => { const x = t.filter((y) => y.task === k); const ok = x.filter((y) => y.correct && y.rt_ms !== null && !y.anticipatory); return { k, n: x.length, acc: x.length ? Math.round((x.filter((y) => y.correct).length / x.length) * 100) : null, rt: mean(ok.map((y) => y.rt_ms as number)) }; });
   return (
-    <div className="panel"><h3>Session complete — thank you</h3>
-      <p className="small">{stored ? <>Saved as <span className="mono">{rec.session_id}</span>. You can review, download or delete it in <a href="#/my-data">My data</a>.</> : "Practice mode: nothing was stored."} Figures are descriptive for this single session; oddball accuracy includes correct rejections.</p>
+    <div className="panel"><h3>{stored ? "Session complete — thank you" : "Demo complete"}</h3>
+      <p className="small">{stored ? <>Saved as <span className="mono">{rec.session_id}</span>. You can review, download or delete it in <a href="#/my-data">My data</a>.</> : "Here are your results. Demo sessions aren’t saved."} Figures describe this single session only.</p>
       <div className="scroll-x"><table><thead><tr><th>Task</th><th className="num">Trials</th><th className="num">Accuracy</th><th className="num">Mean RT (correct, ms)</th></tr></thead>
         <tbody>{per.map((p) => <tr key={p.k}><td>{p.k.replace(/_/g, " ")}</td><td className="num">{p.n}</td><td className="num">{p.acc ?? "—"}%</td><td className="num">{p.rt ? Math.round(p.rt) : "—"}</td></tr>)}</tbody></table></div>
       <p className="small">Display: {rec.display_mode}{rec.camera_used ? " (camera used, not recorded)" : ""} · median frame interval {rec.timing.median_frame_ms ?? "n/a"} ms.</p>

@@ -47,10 +47,10 @@ export function VisualSearchTask({ requestedMode, caps, cond, audioOn, tone, sta
 
   const startCamera = async (f = facing) => {
     setMsg("");
-    try { await cam.current.start(video.current!, f); setCamOn(true); camUsedEver.current = true; setFacing(f); onCameraStateChange?.(true); }
+    try { await cam.current.start(video.current!, f); setCamOn(true); camUsedEver.current = true; setFacing(f); onCameraStateChange?.(true); spatial.current?.setVideo(video.current, f === "user"); }
     catch (e) { const d = describeCameraError(e); setMsg(d.message); setCamOn(false); onCameraStateChange?.(false); }
   };
-  const stopCamera = () => { cam.current.stop(video.current); setCamOn(false); onCameraStateChange?.(false); };
+  const stopCamera = () => { spatial.current?.setVideo(null); cam.current.stop(video.current); setCamOn(false); onCameraStateChange?.(false); };
   const enterXR = async () => {
     setMsg("");
     try { await spatial.current!.startXR(overlay.current!); setXrOn(true); }
@@ -95,17 +95,16 @@ export function VisualSearchTask({ requestedMode, caps, cond, audioOn, tone, sta
     onFinish({ trials: out, displayMode: mode, cameraUsed: used && mode === "camera_overlay", medianFrameMs: spatial.current?.medianFrameMs ?? null, blockModalities: plan });
   }
 
-  const showVideo = mode === "camera_overlay";
-  return (
+    return (
     <div className="panel" ref={wrap}>
       <div className="row spread"><h3 style={{ margin: 0 }}>Spatial visual search</h3>
         <span className="badge b-info">{{ canvas2d: "2D canvas (no WebGL)", scene3d: "3D environment", camera_overlay: "camera overlay · not spatial AR", webxr: "WebXR AR" }[mode]}</span></div>
-      {mode === "camera_overlay" && <Note kind="info">Camera overlay: your live camera is shown behind 3D shapes. This is <strong>not</strong> spatial AR — shapes do not stay anchored in the room. Video stays in your browser; nothing is recorded, saved or uploaded.</Note>}
+      {mode === "camera_overlay" && <Note kind="info">Your live camera is rendered inside the 3D scene together with the holographic shapes. This is a camera overlay, <strong>not</strong> spatial AR: shapes are not anchored to the room. Video stays in your browser; nothing is recorded, saved or uploaded.</Note>}
       {mode === "webxr" && <Note kind="info">WebXR AR uses your device's motion tracking and camera passthrough (Chrome on supported Android devices). Camera pixels are handled by the browser/OS and are not exposed to PRISM.</Note>}
       {msg && <div className="err" role="alert">{msg}</div>}
       <div ref={overlay} className="xr-root" style={{ position: "relative" }}>
         <div className="stage" style={{ aspectRatio: undefined }}>
-          <video ref={video} playsInline muted aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: showVideo && camOn ? "block" : "none", transform: facing === "user" ? "scaleX(-1)" : "none" }} />
+          <video ref={video} playsInline muted aria-hidden style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none" }} />  {/* source only: pixels are drawn inside the 3D scene */}
           <div ref={host} className="stagehost" role="img" aria-label={`Search field with ${SET_SIZES[cond.complexity]} items${cond.movement ? ", moving" : ""}${cond.distraction ? ", with flicker distraction" : ""}`} />
           <div className="hud"><span>{phase === "ready" ? "PREVIEW · no target" : hud}</span><span>{camOn ? "● camera live (not recorded)" : ""}</span></div>
         </div>

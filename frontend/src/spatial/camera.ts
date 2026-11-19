@@ -3,7 +3,7 @@ export type CameraErrorKind = "insecure" | "unsupported" | "denied" | "not_found
 export class CameraError extends Error { constructor(public kind: CameraErrorKind, message: string) { super(message); } }
 
 const EXPLAIN: Record<CameraErrorKind, string> = {
-  insecure: "Camera access needs HTTPS (or localhost). This page is not in a secure context.",
+  insecure: "Camera access needs a secure (HTTPS) connection.",
   unsupported: "This browser does not support camera access.",
   denied: "Camera permission was denied. You can continue with the 3D environment without camera, or allow the camera in your browser's site settings and try again.",
   not_found: "No camera was found on this device.",
@@ -29,25 +29,42 @@ export function classify(e: unknown): CameraErrorKind {
 export class CameraController {
   stream: MediaStream | null = null;
   facing: "user" | "environment" = "environment";
+  onEnded: (() => void) | null = null;
+  private hide = () => { if (document.visibilityState === "hidden" && this.stream) { this.stop(); this.onEnded?.(); } };  // never keep the camera running in a background tab
 
-  async start(video: HTMLVideoElement, facing: "user" | "environment"): Promise<{ facing: string; label: string }> {
+  /** Starts the camera. Tries the requested facing mode, then any camera; throws a typed CameraError. */
+  async start(video: HTMLVideoElement, facing: "user" | "environment", deviceId?: string): Promise<{ facing: string; label: string }> {
     if (!window.isSecureContext) throw new CameraError("insecure", "insecure context");
     if (!navigator.mediaDevices?.getUserMedia) throw new CameraError("unsupported", "no getUserMedia");
     this.stop();
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } } });
-    } catch (e) { throw new CameraError(classify(e), String((e as Error)?.message || e)); }
+    const attempts: MediaStreamConstraints[] = deviceId
+      ? [{ audio: false, video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } } }]
+      : [{ audio: false, video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } } }, { audio: false, video: true }];
+    let lastErr: unknown = null;
+    for (const c of attempts) {
+      try { this.stream = await navigator.mediaDevices.getUserMedia(c); lastErr = null; break; }
+      catch (e) { lastErr = e; if (classify(e) === "denied") break; }   // a denial is final; other errors may succeed with looser constraints
+    }
+    if (!this.stream) throw new CameraError(classify(lastErr), String((lastErr as Error)?.message || lastErr));
     this.facing = facing;
-    video.srcObject = this.stream; video.muted = true; video.playsInline = true;
-    try { await video.play(); } catch { /* autoplay policies: playsInline+muted normally succeeds */ }
+    video.setAttribute("playsinline", ""); video.setAttribute("muted", ""); video.muted = true; video.playsInline = true; video.autoplay = true;   // required by iOS Safari
+    video.srcObject = this.stream;
+    try { await video.play(); } catch { /* the stream is attached; the first user gesture will start playback */ }
     const t = this.stream.getVideoTracks()[0];
+    t.addEventListener("ended", () => { this.stream = null; this.onEnded?.(); }, { once: true });
+    document.addEventListener("visibilitychange", this.hide); window.addEventListener("pagehide", this.hide);
     return { facing: (t.getSettings().facingMode as string) || facing, label: t.label || "camera" };
+  }
+
+  async devices(): Promise<{ id: string; label: string }[]> {
+    try { return (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput").map((d, i) => ({ id: d.deviceId, label: d.label || `Camera ${i + 1}` })); } catch { return []; }
   }
 
   stop(video?: HTMLVideoElement | null) {
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     if (video) video.srcObject = null;
+    document.removeEventListener("visibilitychange", this.hide); window.removeEventListener("pagehide", this.hide);
   }
   get active() { return !!this.stream && this.stream.getVideoTracks().some((t) => t.readyState === "live"); }
 }

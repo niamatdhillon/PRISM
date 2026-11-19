@@ -21,8 +21,21 @@ describe("camera permission handling", () => {
     await expect(new CameraController().start(video(), "user")).rejects.toMatchObject({ kind: "insecure" }); expect(gum).not.toHaveBeenCalled();
     setSecure(true); setGUM(undefined); await expect(new CameraController().start(video(), "user")).rejects.toMatchObject({ kind: "unsupported" });
   });
+  it("falls back to any camera if the requested facing mode is unavailable, but never retries after a denial", async () => {
+    const track = { stop: vi.fn(), readyState: "live", getSettings: () => ({}), label: "cam", addEventListener: vi.fn() }; const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+    const gum = vi.fn().mockRejectedValueOnce(Object.assign(new Error("x"), { name: "OverconstrainedError" })).mockResolvedValueOnce(stream); setSecure(true); setGUM(gum);
+    await new CameraController().start(video(), "environment"); expect(gum).toHaveBeenCalledTimes(2); expect(gum.mock.calls[1][0].video).toBe(true);
+    const deny = vi.fn().mockRejectedValue(Object.assign(new Error("x"), { name: "NotAllowedError" })); setGUM(deny);
+    await expect(new CameraController().start(video(), "environment")).rejects.toMatchObject({ kind: "denied" }); expect(deny).toHaveBeenCalledTimes(1);
+  });
+  it("stops the camera when the tab is hidden (no background capture)", async () => {
+    const track = { stop: vi.fn(), readyState: "live", getSettings: () => ({}), label: "cam", addEventListener: vi.fn() }; const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+    setSecure(true); setGUM(vi.fn().mockResolvedValue(stream)); const c = new CameraController(); const ended = vi.fn(); c.onEnded = ended; await c.start(video(), "user");
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true }); document.dispatchEvent(new Event("visibilitychange"));
+    expect(track.stop).toHaveBeenCalled(); expect(ended).toHaveBeenCalled(); expect(c.active).toBe(false); Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+  });
   it("requests video only (no audio) and stop() ends every track", async () => {
-    const track = { stop: vi.fn(), readyState: "live", getSettings: () => ({ facingMode: "user" }), label: "cam" }; const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+    const track = { stop: vi.fn(), readyState: "live", getSettings: () => ({ facingMode: "user" }), label: "cam", addEventListener: vi.fn() }; const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
     const gum = vi.fn().mockResolvedValue(stream); setSecure(true); setGUM(gum); const v = video();
     const c = new CameraController(); const info = await c.start(v, "user");
     expect(gum.mock.calls[0][0].audio).toBe(false); expect(info.facing).toBe("user"); expect(c.active).toBe(true);

@@ -6,6 +6,7 @@
 // Task: find the bright cyan octahedron among cyan spheres and violet octahedra; report whether it is on the left or right of the view axis.
 import * as THREE from "three";
 import { SET_SIZES } from "../components/fieldEngine";
+import { VideoBackdrop } from "./videoBackdrop";
 import type { DisplayMode } from "../types";
 
 export interface StageConfig { complexity: 0 | 1 | 2; movement: boolean; distraction: boolean; brightness: number }
@@ -18,7 +19,7 @@ export class SpatialStage {
   private cfg: StageConfig; private raf = 0; private last = 0; private frameTimes: number[] = []; private container: HTMLElement; private fixation: THREE.Group;
   private flicker: THREE.Mesh; private flash: THREE.Mesh; private mats: THREE.MeshBasicMaterial[] = []; private offset = new THREE.Vector2(); private pointer = new THREE.Vector2();
   private orient: { beta: number; gamma: number } | null = null; private useOrientation = false; private xrSession: XRSession | null = null; private fixationOn = false;
-  private azMax = 0.7; private elMax = 0.35; private ro: ResizeObserver | null = null; private onResize = () => this.resize();
+  private backdrop: VideoBackdrop | null = null; private azMax = 0.7; private elMax = 0.35; private ro: ResizeObserver | null = null; private onResize = () => this.resize();
   private onPointer = (e: PointerEvent) => { const r = this.container.getBoundingClientRect(); this.pointer.set(((e.clientX - r.left) / r.width - 0.5) * 2, ((e.clientY - r.top) / r.height - 0.5) * 2); };
   private onOrient = (e: DeviceOrientationEvent) => { if (e.beta !== null && e.gamma !== null) this.orient = { beta: e.beta, gamma: e.gamma }; };
 
@@ -70,6 +71,14 @@ export class SpatialStage {
   }
   private applyBrightness() { for (const m of this.mats) { m.opacity = ((m.userData as { base: number }).base) * this.cfg.brightness; } }
 
+  /** Show a live camera feed as part of the 3D scene (camera_overlay mode). Pass null to remove it. */
+  setVideo(video: HTMLVideoElement | null, mirror = false) {
+    this.backdrop?.dispose(); this.backdrop = null;
+    if (video) { this.backdrop = new VideoBackdrop(video, this.camera, mirror); this.video = video; video.addEventListener("loadedmetadata", () => this.backdrop?.layout(), { once: true }); }
+  }
+  private video: HTMLVideoElement | null = null;
+  get cameraFeedLive() { return !!this.backdrop && this.backdrop.ready; }
+
   setConfig(cfg: StageConfig) { const re = cfg.complexity !== this.cfg.complexity; this.cfg = cfg; if (re) this.populate(); else this.applyBrightness(); }
   setFixation(on: boolean) { this.fixationOn = on; this.fixation.visible = on; }
   async enableOrientation(): Promise<boolean> {
@@ -105,10 +114,10 @@ export class SpatialStage {
     const w = this.container.clientWidth || 640, h = this.container.clientHeight || 400;
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h;
     // keep the horizontal field of view near 85 degrees (avoids stretched edges on wide stages) and clamp the vertical one
-    const vFov = Math.min(75, Math.max(40, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(42.5)) / this.camera.aspect))));
+    const vFov = Math.min(75, Math.max(40, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(36)) / this.camera.aspect))));
     this.camera.fov = vFov; this.camera.updateProjectionMatrix();
     this.azMax = Math.atan(Math.tan(THREE.MathUtils.degToRad(vFov) / 2) * this.camera.aspect) * 0.85; this.elMax = THREE.MathUtils.degToRad(vFov / 2) * 0.8;
-    for (const it of this.items) this.pos(it); if (this.target) this.pos(this.target);
+    for (const it of this.items) this.pos(it); if (this.target) this.pos(this.target); this.backdrop?.layout();
   }
 
   private frame(t: number) {
@@ -136,7 +145,7 @@ export class SpatialStage {
   }
 
   dispose() {
-    this.renderer.setAnimationLoop(null); this.ro?.disconnect(); window.removeEventListener("resize", this.onResize); window.removeEventListener("deviceorientation", this.onOrient);
+    this.renderer.setAnimationLoop(null); this.ro?.disconnect(); this.backdrop?.dispose(); window.removeEventListener("resize", this.onResize); window.removeEventListener("deviceorientation", this.onOrient);
     this.container.removeEventListener("pointermove", this.onPointer); void this.xrSession?.end().catch(() => undefined);
     this.scene.traverse((o) => { const m = o as THREE.Mesh; m.geometry?.dispose?.(); const mat = m.material as THREE.Material | THREE.Material[] | undefined; (Array.isArray(mat) ? mat : mat ? [mat] : []).forEach((x) => x.dispose()); });
     this.renderer.dispose(); this.renderer.domElement.remove();
