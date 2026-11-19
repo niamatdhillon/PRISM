@@ -98,3 +98,23 @@ def test_single_service_serves_frontend_and_keeps_api_routes(tmp_path):
     c = TestClient(app_mod.app, headers={"x-prism-client": "web"})
     assert "PRISM-SPA" in c.get("/").text and c.get("/api/health").json()["status"] == "ok" and c.get("/api/admin/overview").status_code == 401
     os.environ.pop("PRISM_STATIC_DIR"); importlib.reload(config); importlib.reload(app_mod)
+
+
+import subprocess
+import sys
+
+
+def _import_config(extra_env):
+    """Import backend.config in a fresh interpreter with a CLEAN environment (no PRISM_* overrides), as a real deployment would."""
+    import os
+    env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""), **extra_env}
+    code = "import backend.config as c; print(c.ENV, c.ON_VERCEL, c.VAR_DIR, c.DATABASE_URL.split('://')[0], c.IS_PROD)"
+    return subprocess.run([sys.executable, "-c", code], cwd=str(pathlib.Path(__file__).resolve().parent.parent), env=env, capture_output=True, text=True)
+
+
+def test_config_imports_with_a_clean_environment_locally_and_on_vercel():
+    local = _import_config({}); assert local.returncode == 0, local.stderr
+    env, on_v, var, db, prod = local.stdout.split(); assert (env, on_v, db, prod) == ("development", "False", "sqlite", "False") and var.endswith("/var")
+    vercel = _import_config({"VERCEL": "1"}); assert vercel.returncode == 0, vercel.stderr
+    env, on_v, var, db, prod = vercel.stdout.split(); assert (env, on_v, var, prod) == ("production", "True", "/tmp/prism", "True")   # serverless: writable /tmp, production mode
+    pg = _import_config({"VERCEL": "1", "POSTGRES_URL": "postgres://u:p@host/db"}); assert pg.returncode == 0 and "postgresql+psycopg2" in pg.stdout

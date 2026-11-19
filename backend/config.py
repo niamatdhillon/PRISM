@@ -3,11 +3,11 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+ON_VERCEL = bool(os.environ.get("VERCEL"))
 DATA_DIR = Path(__file__).resolve().parent / "data"
 VAR_DIR = Path(os.environ.get("PRISM_VAR_DIR") or ("/tmp/prism" if ON_VERCEL else ROOT / "var"))  # runtime files (index cache, local sqlite); /tmp is the only writable place on Vercel
 MODEL_DIR = DATA_DIR / "models"
 
-ON_VERCEL = bool(os.environ.get("VERCEL"))
 ENV = os.environ.get("PRISM_ENV") or ("production" if ON_VERCEL else "development")  # development | production
 IS_PROD = ENV == "production"
 DATABASE_URL = (os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or os.environ.get("POSTGRES_PRISMA_URL")
