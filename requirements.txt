@@ -1,6 +1,6 @@
-# Backend runtime (hosted: Docker/Render/Fly etc.). Neural embeddings are optional: see requirements-local.txt.
+# Production / Vercel runtime (Python 3.12). Everything here is used by the deployed API function.
+# Not included on purpose: faiss-cpu (68 MB; retrieval falls back to an exact NumPy inner-product search that returns identical results for this corpus), torch/sentence-transformers (MiniLM runs via onnxruntime), pyedflib + the 175 MB raw EEG archive (features are packaged), uvicorn (Vercel runs the ASGI app).
 fastapi>=0.110
-uvicorn[standard]
 pydantic>=2.5
 sqlalchemy>=2.0,<2.1
 alembic>=1.13
@@ -10,7 +10,7 @@ numpy>=1.26,<2
 scikit-learn>=1.4,<1.7
 scipy>=1.11
 requests>=2.31
-faiss-cpu>=1.8
 simplemma>=1.0
 vaderSentiment>=3.3
-pyedflib>=0.1.36
+onnxruntime>=1.17
+tokenizers>=0.19

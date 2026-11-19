@@ -52,7 +52,11 @@ def test_corpus_metadata_is_complete_and_citations_resolve():
 
 
 def test_vector_index_matches_embeddings():
-    s = rag.state(); assert s["index"] is not None and s["index"].ntotal == len(s["chunks"]) and "faiss" in rag.info()["vector_store"]
+    s = rag.state(); info = rag.info()["vector_store"]
+    if s["index"] is not None:   # FAISS installed (local/Docker)
+        assert s["index"].ntotal == len(s["chunks"]) and "faiss" in info
+    else:                        # production profile: exact NumPy inner-product search
+        assert "numpy" in info and s["E"].shape[0] == len(s["chunks"])
     q = "redundant audio and visual signals reaction time"; assert "diederich2004" in {h["doc_id"] for h in rag.search(q, 3)["semantic"]}
 
 
@@ -156,3 +160,55 @@ def test_live_ollama_generation_end_to_end():
     assert a["mode"] in ("generated", "insufficient_evidence") and (a["mode"] != "generated" or a["generator"]["type"] == "ollama")
     if a["mode"] == "generated":
         assert a["verification"]["sentences"] and all(c in [p["rank"] for p in a["passages"]] for s in a["verification"]["sentences"] for c in s["citations"])
+
+
+def test_production_without_ollama_host_reports_not_configured_and_never_probes_localhost(monkeypatch):
+    from backend import config
+    monkeypatch.setattr(config, "IS_PROD", True); monkeypatch.setattr(config, "OLLAMA_HOST_SET", False)
+    called = []
+    monkeypatch.setattr(requests, "get", lambda *a, **k: called.append(a) or (_ for _ in ()).throw(AssertionError("must not probe")))
+    st = llm.status(); assert st["state"] == "not_configured" and not st["available"] and not called and st["host"] is None
+
+
+def test_remote_ollama_requires_https_flag_and_sends_bearer_token(monkeypatch):
+    from backend import config
+    monkeypatch.setattr(config, "ALLOW_REMOTE_OLLAMA", True); monkeypatch.setattr(config, "OLLAMA_API_KEY", "secret-token")
+    with pytest.raises(ValueError): llm.validate_host("http://ollama.example.com")             # remote must be https
+    assert llm.validate_host("https://ollama.example.com/") == "https://ollama.example.com"
+    seen = {}
+    class R:
+        ok = True; status_code = 200
+        def raise_for_status(s): pass
+        def json(s): return {"models": [{"name": "m", "size": 1, "details": {}}], "version": "x"}
+    monkeypatch.setattr(requests, "get", lambda u, **k: seen.setdefault("h", k.get("headers")) and R() or R())
+    st = llm.status({"host": "https://ollama.example.com", "model": "m"})
+    assert st["available"] and seen["h"] == {"Authorization": "Bearer secret-token"}
+    assert "secret-token" not in str(st)                                                          # never echoed to the UI
+
+
+def test_public_demo_endpoints_are_open_but_limited_and_store_nothing(client, monkeypatch):
+    from backend import config
+    n = client.post("/api/demo/nlp/analyze", json={"text": "The flickering distracted me but the beep helped."}); assert n.status_code == 200 and n.json()["keywords"]
+    r = client.post("/api/demo/rag/ask", json={"question": "What is the capital of France?", "use_llm": False}); assert r.json()["mode"] == "insufficient_evidence"
+    assert client.get("/api/public/capabilities").json()["retrieval"]["documents"] >= 26
+    assert client.post("/api/demo/nlp/analyze", json={"text": "x" * 2000}).status_code == 422            # size limit
+    from backend.routers import demo; demo._hits.clear(); monkeypatch.setattr(config, "DEMO_RATE_PER_MIN", 3)
+    codes = [client.post("/api/demo/rag/search", json={"query": "task switching"}).status_code for _ in range(5)]
+    assert codes[:3] == [200, 200, 200] and codes[3] == 429                                              # rate limited
+    from backend import models; from backend.db import SessionLocal
+    db = SessionLocal(); assert db.query(models.ExperimentSession).count() == 0 and db.query(models.AuditLog).count() == 0; db.close()
+
+
+def test_public_endpoints_never_expose_participant_data_or_admin_settings(client):
+    for p in ("/api/public/capabilities", "/api/public/eeg-model", "/api/public/rag-evaluation", "/api/public/study", "/api/public/literature"):
+        t = client.get(p).text.lower(); assert "recovery" not in t and "token_hash" not in t and "password" not in t and "127.0.0.1" not in t, p
+    assert client.get("/api/public/eeg-model").json()["result"]["status"] == "ok"
+
+
+def test_production_demo_never_reports_generation_ready_without_an_explicit_endpoint(client, monkeypatch):
+    from backend import config
+    monkeypatch.setattr(config, "IS_PROD", True); monkeypatch.setattr(config, "OLLAMA_HOST_SET", False)
+    monkeypatch.setattr(requests, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not probe localhost in production")))
+    assert client.get("/api/public/capabilities").json()["generation"] == {"available": False, "model": None, "state": "not_configured"}
+    r = client.post("/api/demo/rag/ask", json={"question": "What is the cost of switching between tasks?", "use_llm": True}).json()
+    assert r["mode"] == "extractive" and r["generator"]["type"] == "extractive-fallback" and "No generation endpoint" in r["generator"]["reason"]

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import analytics, llm, models, nlp, rag, records, security
+from ..services import lab
 from ..db import get_db
 from ..services import core
 
@@ -35,17 +36,7 @@ def _cfg(db: Session):
 def nlp_analyze(body: TextIn):
     if not body.text.strip():
         raise HTTPException(422, "empty text")
-    pre = nlp.preprocess(body.text)
-    s = rag.state()
-    vec = s["tfidf"]; q = vec.transform([body.text]); inv = {i: t for t, i in vec.vocabulary_.items()}; coo = q.tocoo()
-    terms = sorted([{"term": inv[c], "tfidf": round(float(v), 4), "idf": round(float(vec.idf_[c]), 3)} for c, v in zip(coo.col, coo.data)], key=lambda d: -d["tfidf"])[:12]
-    sims = (s["X"] @ q.T).toarray().ravel(); ssem = rag.semantic_scores(body.text)
-    top = lambda sc: [{"chunk_id": s["chunks"][i]["chunk_id"], "title": s["chunks"][i]["title"], "year": s["chunks"][i]["year"], "score": round(float(sc[i]), 3)} for i in sc.argsort()[::-1][:3]]  # noqa: E731
-    return {"preprocessing": pre, "features": nlp.linguistic_features(body.text), **nlp.themes_and_polarity(body.text), "sentiment_vader": nlp.vader_sentiment(body.text),
-            "keywords": nlp.extract_keywords(body.text),
-            "tfidf": {"top_terms": terms, "out_of_vocabulary": sorted({t for t in pre["content_stems"] if t not in vec.vocabulary_}), "vocabulary_size": len(vec.vocabulary_),
-                      "note": "TF-IDF is fitted on the scientific corpus; terms absent from it get no weight."},
-            "nearest_literature": {"tfidf": top(sims), "semantic": top(ssem), "semantic_method": s["emb"].name}}
+    return lab.analyze_text(body.text)
 
 
 @router.get("/nlp/reflection-themes")

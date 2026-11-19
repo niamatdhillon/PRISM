@@ -15,38 +15,54 @@ class LlmError(Exception):
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
 
+def _headers() -> Dict:
+    return {"Authorization": f"Bearer {config.OLLAMA_API_KEY}"} if config.OLLAMA_API_KEY else {}
+
+
 def resolve_cfg(stored: Optional[Dict] = None) -> Dict:
     s = stored or {}
-    return {"host": (s.get("host") or config.OLLAMA_HOST).rstrip("/"), "model": s.get("model") or config.OLLAMA_MODEL, "timeout": float(s.get("timeout") or config.OLLAMA_TIMEOUT_S)}
+    explicit = bool(s["explicit"]) if "explicit" in s else bool(s.get("host")) or config.OLLAMA_HOST_SET   # idempotent: a resolved dict keeps its flag
+    return {"host": (s.get("host") or config.OLLAMA_HOST).rstrip("/"), "model": s.get("model") or config.OLLAMA_MODEL, "timeout": float(s.get("timeout") or config.OLLAMA_TIMEOUT_S), "explicit": explicit}
 
 
 def validate_host(host: str) -> str:
     u = urlparse(host)
     if u.scheme not in ("http", "https") or not u.hostname:
         raise ValueError("Ollama host must be an http(s) URL")
-    if u.hostname not in LOOPBACK and not config.ALLOW_REMOTE_OLLAMA:
-        raise ValueError("only loopback Ollama hosts are accepted (set PRISM_ALLOW_REMOTE_OLLAMA=1 to allow a private remote host; never expose Ollama publicly)")
+    if u.hostname not in LOOPBACK:
+        if not config.ALLOW_REMOTE_OLLAMA:
+            raise ValueError("only loopback Ollama hosts are accepted (set PRISM_ALLOW_REMOTE_OLLAMA=1 to allow a remote, authenticated endpoint; never expose a bare Ollama server publicly)")
+        if u.scheme != "https":
+            raise ValueError("a remote Ollama endpoint must use https")
     return host.rstrip("/")
 
 
 def status(cfg: Optional[Dict] = None) -> Dict:
     import requests
     c = resolve_cfg(cfg)
+    if config.IS_PROD and not c["explicit"]:   # production never falls back to a localhost default
+        return {"host": None, "configured_model": None, "available": False, "models": [], "model": None, "version": None, "running_models": [], "state": "not_configured",
+                "reason": "No generation endpoint is configured for this deployment (set OLLAMA_HOST to a secured Ollama endpoint). Answers use extractive retrieval."}
     base = {"host": c["host"], "configured_model": c["model"] or None, "available": False, "models": [], "model": None, "version": None, "running_models": []}
     try:
         validate_host(c["host"])
     except ValueError as e:
         return {**base, "state": "host_rejected", "reason": str(e)}
     try:
-        r = requests.get(c["host"] + "/api/tags", timeout=2.0); r.raise_for_status()
+        r = requests.get(c["host"] + "/api/tags", timeout=4.0, headers=_headers()); r.raise_for_status()
         models = [{"name": m["name"], "size_gb": round(m.get("size", 0) / 1e9, 2), "parameters": m.get("details", {}).get("parameter_size"), "quant": m.get("details", {}).get("quantization_level")} for m in r.json().get("models", [])]
     except requests.exceptions.ConnectionError:
-        return {**base, "state": "unreachable", "reason": f"Ollama is not running at {c['host']}. Start it (Ollama app or `ollama serve`)."}
+        return {**base, "state": "unreachable", "reason": f"Ollama is not reachable at {c['host']}. Start it (Ollama app or `ollama serve`) or check OLLAMA_HOST."}
+    except requests.exceptions.Timeout:
+        return {**base, "state": "unreachable", "reason": f"Ollama did not respond within 4 s at {c['host']}."}
+    except requests.exceptions.HTTPError as e:
+        code = e.response.status_code if e.response is not None else 0
+        return {**base, "state": "unauthorised" if code in (401, 403) else "error", "reason": ("The Ollama endpoint rejected the credentials (check OLLAMA_API_KEY)." if code in (401, 403) else f"Ollama returned HTTP {code}.")}
     except Exception as e:  # noqa: BLE001
         return {**base, "state": "error", "reason": f"{type(e).__name__}: {str(e)[:150]}"}
     try:
-        base["version"] = requests.get(c["host"] + "/api/version", timeout=2.0).json().get("version")
-        base["running_models"] = [m["name"] for m in requests.get(c["host"] + "/api/ps", timeout=2.0).json().get("models", [])]
+        base["version"] = requests.get(c["host"] + "/api/version", timeout=4.0, headers=_headers()).json().get("version")
+        base["running_models"] = [m["name"] for m in requests.get(c["host"] + "/api/ps", timeout=4.0, headers=_headers()).json().get("models", [])]
     except Exception:  # noqa: BLE001
         pass
     base["models"] = models
@@ -65,7 +81,7 @@ def chat(cfg: Optional[Dict], model: str, system: str, user: str, max_tokens: in
     c = resolve_cfg(cfg)
     validate_host(c["host"])
     try:
-        r = requests.post(c["host"] + "/api/chat", timeout=c["timeout"], json={
+        r = requests.post(c["host"] + "/api/chat", timeout=c["timeout"], headers=_headers(), json={
             "model": model, "stream": False, "options": {"temperature": 0.1, "num_predict": max_tokens},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
     except requests.exceptions.Timeout:

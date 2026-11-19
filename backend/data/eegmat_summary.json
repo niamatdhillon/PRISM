@@ -1,0 +1,112 @@
+{
+ "n_subjects": 36,
+ "n_recordings": 72,
+ "n_epochs": 432,
+ "epoch_seconds": 10,
+ "max_seconds_per_recording": 60,
+ "class_counts": {
+  "rest": 216,
+  "task": 216
+ },
+ "example_recordings": [
+  {
+   "file": "Subject00_1.edf",
+   "n_eeg_channels": 20,
+   "channels": [
+    "A2",
+    "C3",
+    "C4",
+    "Cz",
+    "F3",
+    "F4",
+    "F7",
+    "F8",
+    "Fp1",
+    "Fp2",
+    "Fz",
+    "O1",
+    "O2",
+    "P3",
+    "P4",
+    "Pz",
+    "T3",
+    "T4",
+    "T5",
+    "T6"
+   ],
+   "sampling_hz": 500.0,
+   "duration_s": 182.0
+  },
+  {
+   "file": "Subject00_2.edf",
+   "n_eeg_channels": 20,
+   "channels": [
+    "A2",
+    "C3",
+    "C4",
+    "Cz",
+    "F3",
+    "F4",
+    "F7",
+    "F8",
+    "Fp1",
+    "Fp2",
+    "Fz",
+    "O1",
+    "O2",
+    "P3",
+    "P4",
+    "Pz",
+    "T3",
+    "T4",
+    "T5",
+    "T6"
+   ],
+   "sampling_hz": 500.0,
+   "duration_s": 62.0
+  }
+ ],
+ "features": [
+  "frontal_delta",
+  "frontal_theta",
+  "frontal_alpha",
+  "frontal_beta",
+  "central_delta",
+  "central_theta",
+  "central_alpha",
+  "central_beta",
+  "temporal_delta",
+  "temporal_theta",
+  "temporal_alpha",
+  "temporal_beta",
+  "parietal_delta",
+  "parietal_theta",
+  "parietal_alpha",
+  "parietal_beta",
+  "occipital_delta",
+  "occipital_theta",
+  "occipital_alpha",
+  "occipital_beta",
+  "frontal_theta_alpha",
+  "central_theta_alpha",
+  "temporal_theta_alpha",
+  "parietal_theta_alpha",
+  "occipital_theta_alpha",
+  "frontal_theta_beta",
+  "central_theta_beta",
+  "temporal_theta_beta",
+  "parietal_theta_beta",
+  "occipital_theta_beta"
+ ],
+ "missing_values": {
+  "nan_cells": 0,
+  "total_cells": 12960
+ },
+ "skipped_files": [],
+ "checksums": {
+  "checked": true,
+  "files_ok": 72,
+  "files_mismatch": 0
+ },
+ "preprocessing": "Relative band power (1-30 Hz total) from Welch PSD (2 s Hamming windows, 50% overlap) per channel, averaged within region; 10 s epochs from the first 60 s of each recording; no cross-subject normalisation (standardisation is fitted inside each CV fold)."
+}

@@ -22,6 +22,19 @@ EPOCH_S, MAX_S = 10, 60
 FEATURE_NAMES = [f"{r}_{b}" for r in REGIONS for b in BANDS] + [f"{r}_theta_alpha" for r in REGIONS] + [f"{r}_theta_beta" for r in REGIONS]
 
 
+def features_path() -> Path:
+    """Locally ingested features win; otherwise the precomputed features packaged with the app (derived from the real dataset; see docs/DATASETS.md)."""
+    local = config.VAR_DIR / "eegmat_features.npz"
+    return local if local.exists() else config.DATA_DIR / "eegmat_features.npz"
+
+
+def packaged_summary():
+    import json
+    f = config.VAR_DIR / "eegmat_summary.json"
+    f = f if f.exists() else config.DATA_DIR / "eegmat_summary.json"
+    return json.loads(f.read_text()) if f.exists() else None
+
+
 def archive_path() -> Path:
     return config.EEGMAT_DIR / "eegmat.zip"
 
@@ -119,14 +132,17 @@ def ingest() -> Dict:
                 info.append({"file": f.name, "n_eeg_channels": len(sig), "channels": sorted(sig), "sampling_hz": fs, "duration_s": dur})
     X = np.vstack(X)
     np.savez_compressed(config.VAR_DIR / "eegmat_features.npz", X=X, y=np.array(y), g=np.array(g), names=np.array(FEATURE_NAMES))
-    return {"n_subjects": len(set(g)), "n_recordings": len({(a, b) for a, b in zip(g, y)}), "n_epochs": int(len(y)), "epoch_seconds": EPOCH_S, "max_seconds_per_recording": MAX_S,
+    summary = {"n_subjects": len(set(g)), "n_recordings": len({(a, b) for a, b in zip(g, y)}), "n_epochs": int(len(y)), "epoch_seconds": EPOCH_S, "max_seconds_per_recording": MAX_S,
             "class_counts": {"rest": int((np.array(y) == 0).sum()), "task": int((np.array(y) == 1).sum())}, "example_recordings": info[:2],
             "features": FEATURE_NAMES, "missing_values": {"nan_cells": int(np.isnan(X).sum()), "total_cells": int(X.size)},
             "skipped_files": skipped, "checksums": checks, "preprocessing": "Relative band power (1-30 Hz total) from Welch PSD (2 s Hamming windows, 50% overlap) per channel, averaged within region; 10 s epochs from the first 60 s of each recording; no cross-subject normalisation (standardisation is fitted inside each CV fold)."}
+    import json
+    (config.VAR_DIR / "eegmat_summary.json").write_text(json.dumps(summary, indent=1))
+    return summary
 
 
 def evaluate() -> Dict:
-    f = config.VAR_DIR / "eegmat_features.npz"
+    f = features_path()
     if not f.exists():
         return {"kind": "public_eeg", "status": "awaiting_data", "label": "AWAITING DATA - dataset not ingested",
                 "message": "Run the dataset ingestion first (Admin -> Datasets). No model is trained and no metric is reported without it."}

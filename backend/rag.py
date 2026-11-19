@@ -71,6 +71,35 @@ class LSAEmbedder:
         return normalize(self.svd.transform(self.vec.transform(texts)))
 
 
+class OnnxEmbedder:
+    """all-MiniLM-L6-v2 (int8-quantised ONNX export by Xenova, Apache-2.0) via onnxruntime + tokenizers. No PyTorch, so it runs on serverless."""
+    neural = True
+    name = "all-MiniLM-L6-v2 (ONNX int8)"
+    description = "Neural sentence embeddings (MiniLM, int8-quantised ONNX); mean pooling + L2 normalisation, cosine similarity."
+
+    def __init__(self, model_dir):
+        import onnxruntime as ort
+        from tokenizers import Tokenizer
+        self.tok = Tokenizer.from_file(str(model_dir / "tokenizer.json"))
+        self.tok.enable_truncation(max_length=256); self.tok.enable_padding()
+        so = ort.SessionOptions(); so.intra_op_num_threads = 1
+        self.sess = ort.InferenceSession(str(model_dir / "model_quantized.onnx"), sess_options=so, providers=["CPUExecutionProvider"])
+        self.inputs = {i.name for i in self.sess.get_inputs()}
+
+    def encode(self, texts: List[str]) -> np.ndarray:
+        out = []
+        for i in range(0, len(texts), 16):
+            enc = self.tok.encode_batch(list(texts[i:i + 16]))
+            ids = np.array([e.ids for e in enc], dtype=np.int64); mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
+            feed = {"input_ids": ids, "attention_mask": mask}
+            if "token_type_ids" in self.inputs:
+                feed["token_type_ids"] = np.zeros_like(ids)
+            hid = self.sess.run(None, feed)[0]
+            m = mask[..., None].astype(np.float32)
+            out.append((hid * m).sum(1) / np.clip(m.sum(1), 1e-9, None))
+        return normalize(np.vstack(out))
+
+
 class STEmbedder:
     neural = True
 
@@ -91,11 +120,16 @@ def _build() -> Dict:
     tfidf = TfidfVectorizer(analyzer=content_stems, sublinear_tf=True)
     X = tfidf.fit_transform(texts)
     emb, note = None, ""
-    if config.EMBED_BACKEND != "lsa":
+    if config.EMBED_BACKEND in ("auto", "onnx"):
+        try:
+            emb = OnnxEmbedder(config.MODEL_DIR / "minilm")
+        except Exception as e:  # noqa: BLE001
+            note = f"ONNX MiniLM unavailable ({type(e).__name__}: {str(e)[:100]}); using LSA fallback."
+    elif config.EMBED_BACKEND == "st":
         try:
             emb = STEmbedder(config.EMBED_MODEL)
         except Exception as e:  # noqa: BLE001
-            note = f"sentence-transformers unavailable ({type(e).__name__}: {str(e)[:120]}); using LSA fallback."
+            note = f"sentence-transformers unavailable ({type(e).__name__}: {str(e)[:100]}); using LSA fallback."
     else:
         note = "Lightweight mode: LSA used instead of neural embeddings."
     if emb is None:

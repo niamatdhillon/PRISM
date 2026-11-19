@@ -12,11 +12,8 @@ from pathlib import Path
 
 
 def migrate():
-    from alembic import command
-    from alembic.config import Config
-    cfg = Config(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
-    cfg.set_main_option("script_location", str(Path(__file__).resolve().parent.parent / "alembic"))
-    command.upgrade(cfg, "head")
+    from .migrate import ensure_schema
+    ensure_schema(force=True)
     print("database is at the latest migration")
 
 

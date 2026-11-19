@@ -1,5 +1,5 @@
 # PRISM single-service image: builds the React frontend, then serves it together with the FastAPI backend.
-# Light profile (LSA retrieval, no torch). Neural embeddings: docker build --build-arg EXTRA="sentence-transformers" .
+# MiniLM runs via ONNX (no torch). EXTRA adds the ASGI server and FAISS.
 FROM node:20-slim AS web
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
@@ -8,8 +8,8 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.11-slim
-ARG EXTRA=""
-ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PRISM_ENV=production PRISM_EMBEDDINGS=lsa PRISM_STATIC_DIR=/app/static PRISM_VAR_DIR=/app/var
+ARG EXTRA="uvicorn[standard] faiss-cpu"
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PRISM_ENV=production PRISM_EMBEDDINGS=auto PRISM_STATIC_DIR=/app/static PRISM_VAR_DIR=/app/var
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt ${EXTRA}

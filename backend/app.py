@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from . import config, models
 from .db import SessionLocal
-from .routers import admin, admin_lab, auth, participant, public
+from .routers import admin, admin_lab, auth, demo, participant, public
 
 log = logging.getLogger("prism")
 app = FastAPI(title="PRISM API", version="2.0.0", docs_url="/api/docs" if not config.IS_PROD else None, openapi_url="/api/openapi.json" if not config.IS_PROD else None)
@@ -20,6 +20,12 @@ async def csrf_and_headers(request: Request, call_next):
     # which together with SameSite=Lax cookies blocks cross-site request forgery.
     if request.method not in SAFE and request.url.path.startswith("/api") and request.headers.get("x-prism-client") != "web":
         return JSONResponse({"detail": "missing X-PRISM-Client header"}, status_code=403)
+    if request.url.path.startswith("/api") and request.url.path != "/api/health":
+        try:
+            ensure_ready()
+        except Exception:  # noqa: BLE001
+            log.exception("database not ready")
+            return JSONResponse({"detail": "The service is starting up or its database is unreachable. Please retry in a moment."}, status_code=503)
     resp = await call_next(request)
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("Referrer-Policy", "same-origin")
@@ -39,7 +45,7 @@ async def unhandled(request: Request, exc: Exception):
     return JSONResponse({"detail": "internal server error"}, status_code=500)
 
 
-for r in (public.router, participant.router, auth.router, admin.router, admin_lab.router):
+for r in (public.router, demo.router, participant.router, auth.router, admin.router, admin_lab.router):
     app.include_router(r)
 
 
@@ -64,15 +70,28 @@ def bootstrap_admin() -> bool:
         db.close()
 
 
+_ready_lock = __import__("threading").Lock()
+_ready = False
+
+
+def ensure_ready():
+    """Migrate + bootstrap once per process. Called lazily from the first request (serverless-safe) and at startup."""
+    global _ready
+    if _ready:
+        return
+    with _ready_lock:
+        if _ready:
+            return
+        from .migrate import ensure_schema
+        ensure_schema(); bootstrap_admin(); _ready = True
+
+
 @app.on_event("startup")
 def _startup():
-    # Apply migrations at startup so a fresh database (SQLite or Postgres) is always usable; failures are logged, not hidden.
     try:
-        from .cli import migrate
-        migrate()
-        bootstrap_admin()
+        ensure_ready()
     except Exception:  # noqa: BLE001
-        log.exception("startup (migration/bootstrap) failed")
+        log.exception("startup (migration/bootstrap) failed; will retry on first request")
 
 
 # Serve the built frontend last so /api/* routes win. Hash routing means index.html is the only HTML entry needed.

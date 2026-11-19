@@ -53,13 +53,20 @@ def test_behavioural_model_refuses_with_a_handful_of_real_sessions(admin):
     assert r["status"] == "insufficient_data" and r["n_sessions"] == 3 and "test_selected" not in r
 
 
-def test_public_eeg_model_awaits_data_when_not_ingested(admin, monkeypatch):
-    from backend import config
-    f = config.VAR_DIR / "eegmat_features.npz"
-    if f.exists():
-        monkeypatch.setattr(config, "VAR_DIR", pathlib.Path("/nonexistent-prism-var"))
+def test_public_eeg_model_awaits_data_when_no_features_exist(admin, monkeypatch):
+    from backend import public_eeg
+    monkeypatch.setattr(public_eeg, "features_path", lambda: pathlib.Path("/nonexistent/eegmat_features.npz"))
     r = admin.post("/api/admin/ml/public-eeg/evaluate").json()
     assert r["status"] == "awaiting_data" and "test_selected" not in r
+
+
+def test_packaged_eeg_features_come_from_the_real_dataset():
+    import json
+    import numpy as np
+    d = np.load(ROOT / "backend" / "data" / "eegmat_features.npz", allow_pickle=False)
+    s = json.loads((ROOT / "backend" / "data" / "eegmat_summary.json").read_text())
+    assert d["X"].shape[0] == 432 and len(set(d["g"])) == 36 == s["n_subjects"] and s["checksums"] == {"checked": True, "files_ok": 72, "files_mismatch": 0}
+    assert not np.isnan(d["X"]).any() and set(d["y"]) == {0, 1}
 
 
 def test_ml_pipeline_never_touches_test_rows_during_selection():

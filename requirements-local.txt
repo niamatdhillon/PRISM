@@ -1,5 +1,8 @@
-# Full local/dev install: backend runtime + neural embeddings + test tools.
+# Local development: production runtime + server, raw-EEG ingestion, test tools.
 -r requirements.txt
-sentence-transformers>=3
+uvicorn[standard]
+faiss-cpu>=1.8          # persisted FAISS index (production/Vercel uses exact NumPy search instead)
+pyedflib
 pytest
 httpx
+# optional (large): sentence-transformers  -> PRISM_EMBEDDINGS=st

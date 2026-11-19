@@ -2,7 +2,7 @@ import os
 import tempfile
 
 _tmp = tempfile.mkdtemp(prefix="prism_test_")
-os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
+os.environ["DATABASE_URL"] = os.environ.get("PRISM_TEST_DATABASE_URL") or f"sqlite:///{_tmp}/test.db"  # set PRISM_TEST_DATABASE_URL to run the suite on PostgreSQL
 os.environ["PRISM_VAR_DIR"] = _tmp
 os.environ.setdefault("PRISM_EMBEDDINGS", "lsa")  # fast, deterministic; the neural path is covered by an optional test
 os.environ["PRISM_ENV"] = "development"

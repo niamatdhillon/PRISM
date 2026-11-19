@@ -62,7 +62,7 @@ def test_foreign_key_cascade_removes_trials():
 
 def test_health_and_errors_logged(admin):
     assert admin.get("/api/health").json()["status"] == "ok"
-    s = admin.get("/api/admin/system").json(); assert s["database"] == "sqlite" and "retrieval" in s and "ollama" in s
+    s = admin.get("/api/admin/system").json(); assert s["database"] in ("sqlite", "postgresql+psycopg2") and "retrieval" in s and "ollama" in s
 
 
 def test_security_headers(client):

@@ -17,7 +17,10 @@ def _make_engine(url: str):
         def _fk(dbapi_con, _):  # enforce FK cascades on SQLite
             dbapi_con.execute("PRAGMA foreign_keys=ON")
         return eng
-    return create_engine(url, pool_pre_ping=True)
+    if config.ON_VERCEL:  # serverless: no long-lived pool; the provider's pooler (e.g. Neon) handles connection reuse
+        from sqlalchemy.pool import NullPool
+        return create_engine(url, poolclass=NullPool, pool_pre_ping=True)
+    return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=5)
 
 
 engine = _make_engine(config.DATABASE_URL)
