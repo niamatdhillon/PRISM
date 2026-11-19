@@ -72,13 +72,13 @@ In *Study & Ollama* choose the model and press *Test generation*. The backend ta
 ## NLP and RAG
 
 - **NLP:** normalisation, tokenisation, stop-words, light stemming (TF-IDF) and dictionary lemmas (simplemma), linguistic features, TF-IDF terms, RAKE-style keyphrases, theme lexicons, VADER sentiment (descriptive only, with caveats), NMF theme modelling over real reflections (refuses below 10 reflections).
-- **RAG:** 26 abstracts → 102 three-sentence chunks → TF-IDF + `all-MiniLM-L6-v2` embeddings in a FAISS `IndexFlatIP` (persisted) → hybrid reciprocal-rank fusion → insufficient-evidence gate → Ollama (numbered-passage prompt) or extractive fallback → verification (each citation exists; ≥50% lexical support; no author-year/DOI references outside the retrieved sources).
+- **RAG:** 26 abstracts → 102 three-sentence chunks → TF-IDF + `all-MiniLM-L6-v2` embeddings → hybrid reciprocal-rank fusion → insufficient-evidence gate → Ollama (numbered-passage prompt) or extractive fallback → verification (each citation exists; ≥50% lexical support; no author-year/DOI references outside the retrieved sources).
 - **Retrieval evaluation (measured on the dev machine, neural embeddings):** 25 queries, single annotator from the development side (not independent or expert-validated), document-level, written after reading the abstracts → optimistic.
 
 | Method | P@1 | P@3 | P@5 | R@3 | R@5 | MRR |
 |---|---|---|---|---|---|---|
 | TF-IDF | 0.92 | 0.427 | 0.272 | 0.873 | 0.900 | 0.94 |
-| Semantic (MiniLM) | 0.92 | 0.480 | 0.304 | 0.960 | 0.987 | 0.96 |
+| Semantic (MiniLM, ONNX int8) | 0.92 | 0.493 | 0.304 | 0.973 | 0.987 | 0.96 |
 
 - **Gate evaluation:** accepts 25/25 answerable and rejects 12/12 off-topic questions — but thresholds were tuned *after* inspecting these same questions (one answerable question was initially rejected, one off-topic accepted), so this is optimistic. Live Ollama (qwen2.5:3b): "Do redundant audio and visual signals speed up responses?" → generated, cited, verified; "Does background noise impair performance?" → the model itself answered INSUFFICIENT_EVIDENCE.
 - **Known limits:** the numeric verifier cannot catch wording errors (a 3B model called epochs "subjects" in one explanation); lexical support is not entailment; the corpus is abstracts only.
@@ -106,36 +106,29 @@ Interpretation: modest, above-chance discrimination with wide uncertainty; a sin
 
 Consent is versioned and hashed; participants can view, export, delete sessions or withdraw (deletes all sessions/trials/reflections, invalidates their secret; a minimal consent record remains). Retention days can be set and enforced (`purge-expired` CLI or admin action). No name/email/IP/user-agent/camera/microphone data is collected. Reflections are visible only to researchers. Every export, deletion, login and configuration change is written to the audit log. Safety text covers flicker and camera use.
 
-## Deployment (single service: site + API + PostgreSQL)
+## Deployment — one Vercel project
 
-The backend serves the built website itself, so there is one service and one origin (HTTPS gives camera access; cookies are first-party). Ollama stays on your own machine.
+Everything deploys together: the React site (CDN) and the FastAPI backend (one Python function under `/api/*`) in the same repository, project and URL. PostgreSQL (Neon via the Vercel Marketplace) holds participants, consents, sessions, trials, config and audit logs. Ollama stays a separately hosted, secured endpoint (optional). Step-by-step instructions, environment variables, size/duration limits and what was and was not verified: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
-**Render (blueprint in [render.yaml](render.yaml)):**
-1. Push this repo to GitHub.
-2. Render → **New + → Blueprint** → select the repo → Apply.
-3. When asked, enter `PRISM_BOOTSTRAP_ADMIN_EMAIL` (your email) and `PRISM_BOOTSTRAP_ADMIN_PASSWORD` (a strong 12+ character password). These are secret platform variables, never stored in the repo; the first admin is created on first start only if no user exists. Delete the password variable after your first sign-in.
-4. Wait for the build, open the `https://….onrender.com` URL, go to *Researcher → sign in → Study & Ollama*, and record your real ethics approval to open data collection.
-
-Notes: the free Render Postgres expires after ~30 days (use a paid plan for research data); the free web service sleeps when idle; the image uses the light LSA profile (no torch). Generation via Ollama is unavailable on a hosted server by design (extractive answers, clearly labelled). **Not run during development:** Docker build, Render deploy and PostgreSQL (the migration was tested on SQLite only).
-
-**Local, one command:** `scripts/start_local.sh` (builds the frontend and serves site + API at http://127.0.0.1:8000).
-
-Frontend-only hosting (Vercel) cannot work alone because the app needs the API; use [deploy/vercel.json.example](deploy/vercel.json.example) only if you host the API elsewhere.
+Locally: `scripts/start_local.sh` serves site + API at http://127.0.0.1:8000. Docker/Render files are an alternative (untested).
 
 ## Evaluation summary of what has actually been run
 
 | Check | Result |
 |---|---|
-| Backend `pytest` (auth/RBAC, participant isolation, validation, withdrawal/deletion, no-synthetic guards, ML gating & leakage, migrations, bootstrap admin, single-service serving, analytics, NLP, RAG, Ollama mocks, one live Ollama test) | 84 passed |
-| Frontend `vitest` (generators, camera permission/fallback logic with mocked `getUserMedia`, access gating, chart rules) | 16 passed |
-| Browser (Chrome-based in-app pane): sign-in, ethics gate, enrolment, 3D visual-search session saved to the DB, camera-denied fallback, datasets ingestion, EEG model page, Ollama explanation, 375 px layout on all 11 routes | exercised manually; see below for what is not covered |
+| Backend `pytest` — auth/RBAC, participant isolation, validation, withdrawal/deletion, no-synthetic guards, ML gating & leakage, migrations, bootstrap admin, public demo endpoints & rate limits, production Ollama configuration, NLP, RAG, Ollama mocks + one live test | **90 passed** on SQLite, **90 passed on PostgreSQL 16**, **90 passed in a clean venv with only the production `requirements.txt`** (ONNX MiniLM, no FAISS/torch) |
+| Frontend `vitest` — generators, camera permission/fallback/auto-stop logic (mocked `getUserMedia`), access gating, wording rules (no alarming/internal text), chart rules | **19 passed**, `tsc` clean |
+| Real-browser E2E (`frontend/e2e/e2e.mjs`, Chrome via playwright-core, production-mode server on PostgreSQL through `api/index.py`) — landing + 3D prism, all public routes, 3D hologram interaction, **live camera via Chrome's fake capture device** drawn inside the WebGL scene, front/rear switch, Stop and navigate-away release every track, permission-denied fallback, public NLP + RAG (Qwen 2.5 3B generated, cited), EEG model page, Sensory Lab 3D and camera-overlay trials, API 401/403, admin sign-in + all 7 researcher pages, emulated iPhone 13 / Pixel 7 / iPad Mini / phone landscape overflow checks | **22 / 22 passed** |
+| Real-browser research flow (`e2e/research.mjs`) — two participants enrol through the UI, complete tasks, save to PostgreSQL; isolation (B cannot read/delete A), researcher dashboard + CSV, withdrawal removes data; rows checked directly in PostgreSQL | **10 / 10 passed** |
 
 ## Known limitations / not verified
 
-- **Real camera feed, WebXR sessions, device sensors, iOS Safari, Android Chrome, Firefox, touch hardware, screen readers: not tested** (the pane blocks capture; no devices). Logic is unit-tested with mocks only. WebXR `immersive-ar` and depth sensing are not exercised; depth sensing is not implemented.
-- GitHub push, Vercel/Render deployment, PostgreSQL and Docker were **not performed or run** (no CLI/credentials/Docker on the dev machine). Migrations were tested on SQLite only.
-- Timing accuracy is browser-limited (frame-quantised onsets, input/audio latency); no hardware timing validation.
-- Behavioural prediction cannot be evaluated until enough real participants exist.
-- No ethics approval; collection is gated, not authorised.
-- Retrieval/gate evaluations are small, single-annotator and optimistic.
-- Light Docker profile uses LSA instead of neural embeddings.
+- **Real camera hardware:** the camera pipeline was exercised with Chrome's *fake* capture device (a synthetic test pattern), which proves getUserMedia → video → WebGL texture, stop/release and denial handling, but **not** a physical camera, nor camera behaviour on iOS Safari or Android Chrome.
+- **WebXR AR:** implemented (immersive-ar session, hit-test reticle, tap-to-anchor) but **never run on a WebXR device** — unverified. It is disabled with an explanation wherever the browser does not report support. Depth sensing is not implemented. The "camera" mode is an orientation-tracked overlay, **not** world-anchored AR, and is labelled as such.
+- **Mobile:** layouts were checked in Chromium *emulation* only (no horizontal overflow on all public routes, working menu, landscape). No physical iPhone, Android phone or tablet, and no real Safari/Firefox, were available.
+- **Vercel:** no deployment was performed (no account/credentials); the production profile was verified locally against PostgreSQL. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the unverified items (actual Vercel build, Neon, Python 3.12, cold starts).
+- Ollama cannot run on Vercel; generation requires your own secured endpoint, otherwise answers are labelled extractive.
+- Timing accuracy is browser-limited; no hardware timing validation.
+- Behavioural prediction cannot be evaluated until enough real participants exist; the public EEG model is one subject-grouped split on 36 subjects.
+- No ethics approval exists; collection is gated, not authorised.
+- Retrieval and gate evaluations are small, single-annotator and optimistic.
