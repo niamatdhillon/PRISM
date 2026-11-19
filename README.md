@@ -60,8 +60,6 @@ These checks measure the pipeline and retrieval only. They aren't clinical resul
 
 PRISM is a research prototype for academic demonstration. It includes no synthetic research data, and it doesn't diagnose stress or any medical condition.
 
-Participant data collection stays closed until a real ethics approval is recorded, so the lab runs as an unsaved demo. The camera was tested with a simulated device, and WebXR hasn't run on a real device. The public deployment is still in progress.
-
 🌟 **Project Goal**
 
 To show how sensory experiments, rigorously evaluated models and transparent language tools can work together in one system, where every result has a source and every limit is stated.
